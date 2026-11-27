@@ -1,6 +1,7 @@
 package web
 
 import (
+	"encoding/csv"
 	"fmt"
 	"net/http"
 	"strings"
@@ -35,6 +36,7 @@ func (s *Server) adminRoutes(r chi.Router) {
 	r.Post("/settings", s.settingsSave)
 	r.Post("/container-types", s.containerTypeSave)
 	r.Post("/ports", s.portSave)
+	r.Post("/hs-import", s.hsImport)
 	r.Get("/audit", s.auditPage)
 }
 
@@ -77,7 +79,7 @@ func (s *Server) laneForm(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	ports, _ := s.app.Ports(ctx)
 	specs, _ := s.app.ContainerSpecs(ctx)
-	l := &app.Lane{Active: true, ColoadRate: 55, EstimatePerWM: 50, DefaultBox: "40HC", DefaultGrade: domain.GradeA, Rates: map[string]float64{}, Dest: app.Port{Code: "LKCMB"}}
+	l := &app.Lane{Active: true, ColoadRate: 55, EstimatePerWM: 50, DefaultBox: "40HC", DefaultGrade: domain.GradeA, Rates: map[string]float64{}, Fallback: map[string]float64{}, Dest: app.Port{Code: "LKCMB"}}
 	if id := idParam(r, "id"); id != 0 {
 		var err error
 		if l, err = s.app.LaneByID(ctx, id); err != nil {
@@ -89,7 +91,8 @@ func (s *Server) laneForm(w http.ResponseWriter, r *http.Request) {
 	if l.ID != 0 {
 		title = "Edit " + l.Short()
 	}
-	s.render(w, r, "admin/lane", s.page(r, title, map[string]any{"L": l, "Ports": ports, "Specs": specs}))
+	fws, _ := s.app.Companies(ctx, "forwarder", "approved", "")
+	s.render(w, r, "admin/lane", s.page(r, title, map[string]any{"L": l, "Ports": ports, "Specs": specs, "Forwarders": fws}))
 }
 
 func (s *Server) laneSave(w http.ResponseWriter, r *http.Request) {
@@ -97,9 +100,14 @@ func (s *Server) laneSave(w http.ResponseWriter, r *http.Request) {
 	in := app.LaneInput{ID: formInt(r, "id"), Origin: r.FormValue("origin"), Dest: r.FormValue("dest"), Active: r.FormValue("active") == "on",
 		ColoadRate: formFloat(r, "coload_rate"), EstimatePerWM: formFloat(r, "estimate"), OriginCFS: r.FormValue("origin_cfs"),
 		DefaultBox: r.FormValue("default_box"), DefaultGrade: r.FormValue("default_grade"), Rates: map[string]float64{}}
+	in.Fallback = map[string]float64{}
+	in.FallbackID = formInt(r, "fallback_company")
 	for _, sp := range specs {
 		if v := formFloat(r, "rate_"+sp.Code); v > 0 {
 			in.Rates[sp.Code] = v
+		}
+		if v := formFloat(r, "fallback_"+sp.Code); v > 0 {
+			in.Fallback[sp.Code] = v
 		}
 	}
 	back := "/admin/lanes/new"
@@ -114,14 +122,16 @@ func (s *Server) laneSave(w http.ResponseWriter, r *http.Request) {
 }
 
 type sailingForm struct {
-	Lanes  []*app.Lane
-	LaneID int64
-	Year   int
-	Week   int
-	Cutoff time.Time
-	Lock   time.Time
-	Close  time.Time
-	VA, VB app.VesselInput
+	Lanes         []*app.Lane
+	LaneID        int64
+	Year          int
+	Week          int
+	Cutoff        time.Time
+	Lock          time.Time
+	Close         time.Time
+	VA, VB        app.VesselInput
+	DecisionHours int
+	BidCloseHours int
 }
 
 func (s *Server) sailingNew(w http.ResponseWriter, r *http.Request) {
@@ -145,7 +155,11 @@ func (s *Server) sailingNew(w http.ResponseWriter, r *http.Request) {
 	at := func(t time.Time, h int) time.Time {
 		return time.Date(t.Year(), t.Month(), t.Day(), h, 0, 0, 0, domain.Colombo)
 	}
-	f.Cutoff, f.Lock, f.Close = at(mon, 17), at(mon.AddDate(0, 0, -2), 17), at(mon.AddDate(0, 0, -1), 17)
+	st := s.app.Settings(ctx)
+	f.Cutoff = at(mon, 17)
+	f.Lock = f.Cutoff.Add(-time.Duration(st.DecisionHours) * time.Hour)
+	f.Close = f.Cutoff.Add(-time.Duration(st.BidCloseHours) * time.Hour)
+	f.DecisionHours, f.BidCloseHours = st.DecisionHours, st.BidCloseHours
 	f.VA = app.VesselInput{Service: "standard", ETD: at(mon.AddDate(0, 0, 3), 18), ETA: at(mon.AddDate(0, 0, 12), 8), IsDefault: true}
 	f.VB = app.VesselInput{Service: "fast", ETD: at(mon.AddDate(0, 0, 2), 20), ETA: at(mon.AddDate(0, 0, 8), 8)}
 	s.render(w, r, "admin/sailing_new", s.page(r, "New sailing", f))
@@ -331,7 +345,7 @@ func (s *Server) settingsPage(w http.ResponseWriter, r *http.Request) {
 	m, _ := s.app.SettingsMap(ctx)
 	specs, _ := s.app.ContainerSpecs(ctx)
 	ports, _ := s.app.Ports(ctx)
-	s.render(w, r, "admin/settings", s.page(r, "Settings", map[string]any{"Values": m, "Keys": app.SettingKeys, "Specs": specs, "Ports": ports, "Stowage": s.app.Settings(ctx).Stowage}))
+	s.render(w, r, "admin/settings", s.page(r, "Settings", map[string]any{"Values": m, "Keys": app.SettingKeys, "Specs": specs, "Ports": ports, "Stowage": s.app.Settings(ctx).Stowage, "HSCount": s.app.HSCount(ctx)}))
 }
 
 func (s *Server) settingsSave(w http.ResponseWriter, r *http.Request) {
@@ -401,4 +415,38 @@ func (s *Server) devMail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, r, "admin/devmail", s.page(r, "Email outbox", es))
+}
+
+func (s *Server) hsImport(w http.ResponseWriter, r *http.Request) {
+	if !s.adminOnly(w, r) {
+		return
+	}
+	if err := r.ParseMultipartForm(12 << 20); err != nil {
+		s.fail(w, r, app.Errf("That file is too large."), "/admin/settings")
+		return
+	}
+	f, _, err := r.FormFile("file")
+	if err != nil {
+		s.fail(w, r, app.Errf("Choose a CSV file to import."), "/admin/settings")
+		return
+	}
+	defer f.Close()
+	cr := csv.NewReader(f)
+	cr.FieldsPerRecord = -1
+	cr.TrimLeadingSpace = true
+	rows, err := cr.ReadAll()
+	if err != nil {
+		s.fail(w, r, app.Errf("We couldn't read that CSV: %s", err.Error()), "/admin/settings")
+		return
+	}
+	added, skipped, err := s.app.ImportHSCodes(r.Context(), userOf(r), rows)
+	if err != nil {
+		s.fail(w, r, err, "/admin/settings")
+		return
+	}
+	msg := fmt.Sprintf("Imported %d HS codes.", added)
+	if skipped > 0 {
+		msg = fmt.Sprintf("Imported %d HS codes; %d rows skipped (header or invalid code).", added, skipped)
+	}
+	s.done(w, r, msg, "/admin/settings")
 }

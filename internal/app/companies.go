@@ -10,19 +10,21 @@ import (
 )
 
 type Company struct {
-	ID          int64
-	Kind        string
-	Name        string
-	RegNumber   string
-	Address     string
-	Phone       string
-	Email       string
-	Status      string
-	StatusNote  string
-	SubmittedAt *time.Time
-	CreatedAt   time.Time
-	Users       int
-	LaneIDs     []int64
+	ID              int64
+	Kind            string
+	Name            string
+	RegNumber       string
+	Address         string
+	Phone           string
+	Email           string
+	Status          string
+	StatusNote      string
+	SubmittedAt     *time.Time
+	CreatedAt       time.Time
+	Users           int
+	LaneIDs         []int64
+	InvoiceCurrency string
+	FallbackLanes   int
 }
 
 func (c *Company) KindLabel() string {
@@ -37,11 +39,11 @@ func (c *Company) KindLabel() string {
 	return c.Kind
 }
 
-const companyCols = `c.id,c.kind,c.name,c.reg_number,c.address,c.phone,c.email,c.status,c.status_note,c.submitted_at,c.created_at,(SELECT count(*) FROM users WHERE company_id=c.id AND active)`
+const companyCols = `c.id,c.kind,c.name,c.reg_number,c.address,c.phone,c.email,c.status,c.status_note,c.submitted_at,c.created_at,(SELECT count(*) FROM users WHERE company_id=c.id AND active),c.invoice_currency`
 
 func scanCompany(row pgx.Row) (*Company, error) {
 	c := &Company{}
-	err := row.Scan(&c.ID, &c.Kind, &c.Name, &c.RegNumber, &c.Address, &c.Phone, &c.Email, &c.Status, &c.StatusNote, &c.SubmittedAt, &c.CreatedAt, &c.Users)
+	err := row.Scan(&c.ID, &c.Kind, &c.Name, &c.RegNumber, &c.Address, &c.Phone, &c.Email, &c.Status, &c.StatusNote, &c.SubmittedAt, &c.CreatedAt, &c.Users, &c.InvoiceCurrency)
 	return c, err
 }
 
@@ -150,7 +152,10 @@ func (a *App) CreateCompany(ctx context.Context, actor *User, kind, name, regNum
 }
 
 // UpdateCompanyProfile edits a company's details.
-func (a *App) UpdateCompanyProfile(ctx context.Context, actor *User, id int64, name, reg, address, phone string) error {
+func (a *App) UpdateCompanyProfile(ctx context.Context, actor *User, id int64, name, reg, address, phone, currency string) error {
+	if currency != "LKR" {
+		currency = "USD"
+	}
 	if !actor.IsStaff() && (actor.CompanyID != id || (actor.Role != RoleFactoryAdmin && actor.Role != RoleForwarder)) {
 		return ErrForbidden
 	}
@@ -164,7 +169,7 @@ func (a *App) UpdateCompanyProfile(ctx context.Context, actor *User, id int64, n
 			return err
 		}
 	}
-	_, err := a.DB.Exec(ctx, `UPDATE companies SET name=$2, reg_number=$3, address=$4, phone=$5 WHERE id=$1`, id, name, strings.TrimSpace(reg), strings.TrimSpace(address), phone)
+	_, err := a.DB.Exec(ctx, `UPDATE companies SET name=$2, reg_number=$3, address=$4, phone=$5, invoice_currency=$6 WHERE id=$1`, id, name, strings.TrimSpace(reg), strings.TrimSpace(address), phone, currency)
 	if err == nil {
 		_ = a.Audit(ctx, a.DB, actor, "company.update", "company", id, "Updated company details", nil)
 	}

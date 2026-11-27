@@ -19,7 +19,7 @@ export default function AwardScreen() {
   const id = Number(useLocalSearchParams<{ id: string }>().id);
   const [award, setAward] = useState<Award | null>(null);
   const [error, setError] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState('');
   const [msg, setMsg] = useState('');
   const [refreshing, setRefreshing] = useState(false);
 
@@ -34,20 +34,20 @@ export default function AwardScreen() {
     void load();
   }, [load]);
 
-  async function upload() {
+  async function upload(kind: 'booking_confirmation' | 'bl_copy') {
     setError('');
     setMsg('');
     try {
       const f = await chooseFile();
       if (!f) return;
-      setBusy(true);
-      await api.uploadConfirmation(id, f);
-      setMsg('Booking confirmation uploaded. The shippers have been told.');
+      setBusy(kind);
+      await api.uploadTenderDoc(id, kind, f);
+      setMsg(kind === 'bl_copy' ? 'B/L copy uploaded.' : 'Booking confirmation uploaded. The shippers have been told.');
       await load();
     } catch (e) {
       setError((e as Error).message);
     } finally {
-      setBusy(false);
+      setBusy('');
     }
   }
 
@@ -68,16 +68,13 @@ export default function AwardScreen() {
           <KV k="Cargo" v={`${tn.cbm.toFixed(1)} CBM · ${(totalKg / 1000).toFixed(1)} t · ${award.shippers.length} shippers`} last />
         </Card>
 
-        <Card tone={award.confirmation ? 'good' : 'accent'} style={{ gap: 10 }}>
-          <H2>Your booking confirmation</H2>
-          {award.confirmation ? (
-            <DocRow label={award.confirmation.filename} sub={`Uploaded · ${award.confirmation.size}`} done action={<Button title="Replace" kind="ghost" onPress={upload} loading={busy} style={{ minHeight: 40 }} />} />
-          ) : (
-            <>
-              <Body>Upload the carrier's booking confirmation so Eimsky can invoice the shippers.</Body>
-              <Button title="Upload booking confirmation" onPress={upload} loading={busy} testID="upload-confirmation" />
-            </>
-          )}
+        <Card tone={award.confirmation && award.blCopy ? 'good' : 'accent'} style={{ gap: 6 }}>
+          <H2>Your documents</H2>
+          <Body small muted>Due within 24 hours of award. Eimsky invoices the shippers once your booking confirmation is in.</Body>
+          <DocRow label="Booking confirmation" sub={award.confirmation ? `${award.confirmation.filename} · ${award.confirmation.size}` : 'Required'} done={!!award.confirmation}
+            action={<Button title={award.confirmation ? 'Replace' : 'Upload'} kind={award.confirmation ? 'ghost' : 'primary'} onPress={() => upload('booking_confirmation')} loading={busy === 'booking_confirmation'} style={{ minHeight: 40, paddingHorizontal: 12 }} testID="upload-confirmation" />} />
+          <DocRow label="B/L copy" sub={award.blCopy ? `${award.blCopy.filename} · ${award.blCopy.size}` : 'Your bill of lading for this box'} done={!!award.blCopy}
+            action={<Button title={award.blCopy ? 'Replace' : 'Upload'} kind={award.blCopy ? 'ghost' : 'secondary'} onPress={() => upload('bl_copy')} loading={busy === 'bl_copy'} style={{ minHeight: 40, paddingHorizontal: 12 }} testID="upload-bl" />} />
           {msg ? <Banner tone="green" text={msg} /> : null}
           {error ? <Banner tone="red" text={error} /> : null}
         </Card>

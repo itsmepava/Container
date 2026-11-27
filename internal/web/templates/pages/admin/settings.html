@@ -24,6 +24,11 @@
     {{end}}
   </section>
   <section class="card">
+    <h2 style="margin-bottom:6px">HS tariff list</h2>
+    <p class="muted small">{{.D.HSCount}} codes. Bookings are checked against this list (see “HS code check”). Import Sri Lanka Customs' list as a CSV with two columns: code, description. Existing codes are updated.</p>
+    {{if .User.IsAdmin}}<form method="post" action="/admin/hs-import" enctype="multipart/form-data" class="upload btn">{{template "csrf" .CSRF}}<svg class="i"><use href="#i-upload"/></svg>Import CSV<input type="file" name="file" accept=".csv,text/csv" data-autosubmit aria-label="Import HS codes CSV"></form>{{end}}
+  </section>
+  <section class="card">
     <h2 style="margin-bottom:10px">Ports</h2>
     <p class="muted small">{{range $i, $p := .D.Ports}}{{if $i}} · {{end}}{{$p.Label}}{{end}}</p>
     <details style="margin-top:8px"><summary class="linkbtn">Add a port</summary>

@@ -60,11 +60,12 @@
       <div class="kv"><span>Your share: {{n2 $b.WM}} W/M of the winning bid</span><span class="mono">USD {{moneyP $b.FreightCents}}</span></div>
       {{end}}
       <div class="kv"><span>Eimsky fee: {{n2 $b.WM}} W/M</span><span class="mono">USD {{moneyP $b.FeeCents}}</span></div>
-      {{if $b.CapApplied}}<div class="kv"><span>Held at your booking estimate</span><span class="mono green">− USD {{money (sub64 (add64 (deref $b.FreightCents) (deref $b.FeeCents)) (deref $b.TotalCents))}}</span></div>{{end}}
+      {{if gt (deref $b.HandlingCents) 0}}<div class="kv"><span>Handling fee, per booking</span><span class="mono">USD {{moneyP $b.HandlingCents}}</span></div>{{end}}
+      {{if $b.CapApplied}}<div class="kv"><span>Held at your booking estimate</span><span class="mono green">− USD {{money (sub64 (add64 (add64 (deref $b.FreightCents) (deref $b.FeeCents)) (deref $b.HandlingCents)) (deref $b.TotalCents))}}</span></div>{{end}}
       <div class="kv"><span><b style="color:var(--ink)">Total to pay</b></span><span class="mono">USD {{moneyP $b.TotalCents}}</span></div>
       <p class="muted small" style="margin-top:12px">USD {{usd2 $d.PerWM}} per W/M, all in.{{if $d.Carrier}} Carried by <b>{{$d.Carrier}}</b>{{with $d.Vessel}} on {{.Label}}, {{.ServiceLabel}}: ETD {{day .ETD}}, ETA {{day .ETA}}{{end}}. The forwarder now has your contact for pickup at the origin CFS.{{end}}</p>
       {{with $d.Invoice}}
-      <div class="row" style="margin-top:6px"><a class="btn" href="/f/bookings/{{$b.ID}}/invoice.pdf" target="_blank" rel="noopener">{{template "icon-download"}} Invoice {{.Number}}</a>{{template "status-pill" .Status}}</div>
+      <div class="row" style="margin-top:6px"><a class="btn" href="/f/bookings/{{$b.ID}}/invoice.pdf" target="_blank" rel="noopener">{{template "icon-download"}} Invoice {{.Number}}</a>{{template "status-pill" .Status}}{{if eq .Currency "LKR"}}<span class="muted small">LKR {{money .TotalLocal}} at {{n2 .FxRate}}</span>{{end}}</div>
       {{else}}
       <p class="small amber" style="margin:0">The invoice from Eimsky appears here once documents are complete.</p>
       {{end}}

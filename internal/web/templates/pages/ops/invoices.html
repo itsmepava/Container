@@ -17,7 +17,7 @@
   <tbody>
   {{range .D.Invoices}}
   <tr><td class="mono"><a href="/ops/invoices/{{.ID}}.pdf" target="_blank" rel="noopener">{{.Number}}</a></td><td>{{.CompanyName}}</td><td><a class="mono" href="/ops/bookings/{{.BookingID}}">{{.BookingRef}}</a></td><td>{{date .IssuedAt}}</td>
-    <td class="right mono"><b>{{money .TotalCents}}</b></td><td>{{template "status-pill" .Status}}</td>
+    <td class="right mono"><b>{{money .TotalCents}}</b>{{if eq .Currency "LKR"}}<div class="faint small">LKR {{money .TotalLocal}}</div>{{end}}</td><td>{{template "status-pill" .Status}}</td>
     <td class="right"><form method="post" action="/ops/invoices/{{.ID}}/paid" class="inline-form" data-keep-scroll>{{template "csrf" $.CSRF}}<input type="hidden" name="paid" value="{{if eq .Status "paid"}}0{{else}}1{{end}}"><button class="btn sm">{{if eq .Status "paid"}}Mark unpaid{{else}}Mark paid{{end}}</button></form></td></tr>
   {{end}}
   </tbody>

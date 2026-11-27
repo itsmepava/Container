@@ -123,6 +123,9 @@ type Planner struct {
 	ColoadRate   float64
 	ExpectedBid  float64
 	OwnPerCBM    float64 // expected freight per CBM for what is in the first box now
+	Threshold    float64 // own-box threshold, % fill
+	PrimaryFill  float64 // % fill of the first box
+	Below        bool    // first box is below the own-box threshold
 }
 
 func (p *Planner) CanLock() bool { return len(p.Blockers) == 0 }
@@ -256,9 +259,35 @@ func (a *App) Planner(ctx context.Context, sailingID int64) (*Planner, error) {
 		p.NextSailing = next
 	}
 
+	// Own-box threshold: below it, recommend co-load, a smaller box or rolling over.
+	p.Threshold = st.OwnBoxThreshold
+	if pb := p.PrimaryBox(); pb != nil && pb.Box.Usable > 0 {
+		p.PrimaryFill = p.RequestedCBM / pb.Box.Usable * 100
+	}
+	p.Below = p.RequestedCBM > 0 && p.PrimaryFill < p.Threshold
+	if p.NextSailing != nil && p.RequestedCBM > 0 {
+		p.PoolOptions = append(p.PoolOptions, domain.PoolOption{Key: "roll", Title: "Roll to " + p.NextSailing.Label(),
+			Detail: "Every lot moves to the next sailing; shippers are notified and their cost caps stay"})
+	}
+	if p.Below {
+		best := -1
+		for i := range p.PoolOptions {
+			p.PoolOptions[i].Recommended = false
+			if p.PoolOptions[i].Key == "own" || p.PoolOptions[i].Key == "roll" {
+				continue
+			}
+			if best < 0 || p.PoolOptions[i].PerCBM < p.PoolOptions[best].PerCBM {
+				best = i
+			}
+		}
+		if best >= 0 {
+			p.PoolOptions[best].Recommended = true
+		}
+	}
+
 	// Lock checklist.
 	if s.Status != "open" {
-		p.Blockers = append(p.Blockers, "The plan is already locked ("+strings.ToLower(s.StatusLabel())+").")
+		p.Blockers = append(p.Blockers, "The FCL is already finalized ("+strings.ToLower(s.StatusLabel())+").")
 	}
 	if s.Vessel() == nil {
 		p.Blockers = append(p.Blockers, "Choose a vessel.")
@@ -299,7 +328,7 @@ func (a *App) Planner(ctx context.Context, sailingID int64) (*Planner, error) {
 		p.Warnings = append(p.Warnings, fmt.Sprintf("%d shipper(s) still missing documents.", missingCount))
 	}
 	if len(p.Held) > 0 {
-		p.Warnings = append(p.Warnings, fmt.Sprintf("%d booking(s) on hold will be released when you lock.", len(p.Held)))
+		p.Warnings = append(p.Warnings, fmt.Sprintf("%d booking(s) on hold will be released when you finalize.", len(p.Held)))
 	}
 	return p, nil
 }
@@ -350,7 +379,7 @@ func (a *App) requireOpen(ctx context.Context, q Querier, sailingID int64) (*Sai
 		return nil, err
 	}
 	if s.Status != "open" {
-		return nil, Errf("The plan for %s is locked. Changes aren't possible now.", s.Label())
+		return nil, Errf("The FCL for %s is finalized. Changes aren't possible now.", s.Label())
 	}
 	return s, nil
 }
@@ -705,9 +734,9 @@ func (a *App) applyMove(ctx context.Context, tx pgx.Tx, actor *User, b *Booking,
 
 func (a *App) priceCoload(ctx context.Context, q Querier, b *Booking, s *Sailing) error {
 	st := a.Settings(ctx)
-	bill := domain.CoLoadBill(b.ID, b.WM, s.Lane.ColoadRate, st.FeePerWM, b.CapCents)
-	_, err := q.Exec(ctx, `UPDATE bookings SET mode='coload', container_id=NULL, freight_cents=$2, fee_cents=$3, total_cents=$4, cap_applied=$5, priced_at=now() WHERE id=$1`,
-		b.ID, bill.FreightCents, bill.FeeCents, bill.TotalCents, bill.CapApplied)
+	bill := domain.CoLoadBill(b.ID, b.WM, s.Lane.ColoadRate, st.FeePerWM, st.HandlingCents, b.CapCents)
+	_, err := q.Exec(ctx, `UPDATE bookings SET mode='coload', container_id=NULL, freight_cents=$2, fee_cents=$3, handling_cents=$6, total_cents=$4, cap_applied=$5, priced_at=now() WHERE id=$1`,
+		b.ID, bill.FreightCents, bill.FeeCents, bill.TotalCents, bill.CapApplied, bill.HandlingCents)
 	return err
 }
 
@@ -821,7 +850,7 @@ func (a *App) PoolsBoard(ctx context.Context, year, week int) ([]PoolCard, error
 		default:
 			near := s.PlanLockAt.Sub(a.Now()) < 72*time.Hour
 			switch {
-			case near && c.FillPct() >= c.BreakEvenPct:
+			case near && c.FillPct() >= st.OwnBoxThreshold:
 				c.Badge = "DECIDE"
 			case near:
 				c.Badge = "CO-LOAD"
@@ -881,6 +910,34 @@ func (a *App) Decide(ctx context.Context, actor *User, sailingID int64, option s
 			if _, err := tx.Exec(ctx, `UPDATE sailings SET decision='coload', status='coload' WHERE id=$1`, sailingID); err != nil {
 				return err
 			}
+		case "roll":
+			next, err := a.nextSailing(ctx, s)
+			if err != nil {
+				return Errf("There's no open next sailing on %s. Create one in Lanes and sailings first.", s.Lane.Short())
+			}
+			bs, err := a.queryBookings(ctx, tx, `b.sailing_id=$1 AND b.status='booked' AND b.mode='pool' ORDER BY b.confirmed_at, b.id`, sailingID)
+			if err != nil {
+				return err
+			}
+			for _, b := range bs {
+				if err := a.applyMove(ctx, tx, actor, b, s, "next_week", ""); err != nil {
+					return err
+				}
+				if err := a.NotifyCompany(ctx, tx, b.CompanyID, Note{Title: "Your booking " + b.Ref + " moved to " + next.Label(),
+					Body: fmt.Sprintf("%s %s didn't fill enough for its own container, so your %.1f CBM goes on %s instead. Your cost cap of USD %s stays the same.", s.Lane.Short(), s.Label(), b.CBM, next.Label(), domain.MoneyShort(b.CapCents)),
+					Link: fmt.Sprintf("/f/bookings/%d", b.ID), Email: true}); err != nil {
+					return err
+				}
+			}
+			if _, err := tx.Exec(ctx, `UPDATE bookings SET status='expired' WHERE sailing_id=$1 AND status='held'`, sailingID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `UPDATE containers SET status='cancelled' WHERE sailing_id=$1`, sailingID); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(ctx, `UPDATE sailings SET decision='roll', status='closed' WHERE id=$1`, sailingID); err != nil {
+				return err
+			}
 		case "hybrid":
 			if _, err := tx.Exec(ctx, `UPDATE containers SET status='cancelled' WHERE sailing_id=$1`, sailingID); err != nil {
 				return err
@@ -919,7 +976,11 @@ func (a *App) Decide(ctx context.Context, actor *User, sailingID int64, option s
 				return err
 			}
 		}
-		return a.Audit(ctx, tx, actor, "plan.decide", "sailing", sailingID, fmt.Sprintf("Decided: %s (USD %.2f per CBM)", opt.Title, opt.PerCBM), nil)
+		sum := fmt.Sprintf("Decided: %s (USD %.2f per CBM)", opt.Title, opt.PerCBM)
+		if opt.Key == "roll" {
+			sum = "Decided: " + opt.Title
+		}
+		return a.Audit(ctx, tx, actor, "plan.decide", "sailing", sailingID, sum, nil)
 	})
 }
 
@@ -930,7 +991,7 @@ func (a *App) LockAndTender(ctx context.Context, actor *User, sailingID int64) (
 		return nil, err
 	}
 	if !p.CanLock() {
-		return nil, Errf("Not ready to lock: %s", strings.Join(p.Blockers, " "))
+		return nil, Errf("Not ready to finalize: %s", strings.Join(p.Blockers, " "))
 	}
 	st := a.Settings(ctx)
 	var tenderIDs []int64
@@ -997,7 +1058,7 @@ func (a *App) LockAndTender(ctx context.Context, actor *User, sailingID int64) (
 					return err
 				}
 			}
-			if err := a.Audit(ctx, tx, actor, "tender.open", "tender", tid, fmt.Sprintf("Plan locked, tender %s opened to %d forwarders", ref, len(forwarders)), nil); err != nil {
+			if err := a.Audit(ctx, tx, actor, "tender.open", "tender", tid, fmt.Sprintf("FCL finalized, tender %s opened to %d forwarders", ref, len(forwarders)), nil); err != nil {
 				return err
 			}
 		}
@@ -1011,7 +1072,7 @@ func (a *App) LockAndTender(ctx context.Context, actor *User, sailingID int64) (
 		if _, err := tx.Exec(ctx, `UPDATE sailings SET status=$2, decision=CASE WHEN decision='' THEN 'own' ELSE decision END WHERE id=$1`, sailingID, status); err != nil {
 			return err
 		}
-		return a.Audit(ctx, tx, actor, "plan.lock", "sailing", sailingID, fmt.Sprintf("Plan locked for %s %s", s.Lane.Short(), s.Label()), nil)
+		return a.Audit(ctx, tx, actor, "plan.lock", "sailing", sailingID, fmt.Sprintf("FCL finalized for %s %s", s.Lane.Short(), s.Label()), nil)
 	})
 	return tenderIDs, err
 }

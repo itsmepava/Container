@@ -86,8 +86,8 @@ async function flashOK(page, text) {
     await ops.click(`a:has-text("${ref}")`);
     await ops.click('a:has-text("Open in load planner")');
     await ops.getByText('Ready for forwarder bidding?').waitFor();
-    await Promise.all([ops.waitForURL(/\/ops\/tenders\/\d+$/), ops.click('button:has-text("Lock plan and open bidding")')]);
-    await flashOK(ops, 'Plan locked');
+    await Promise.all([ops.waitForURL(/\/ops\/tenders\/\d+$/), ops.click('button:has-text("Finalize FCL")')]);
+    await flashOK(ops, 'FCL finalized');
     const tenderID = Number(ops.url().match(/tenders\/(\d+)/)[1]);
     step('tender ' + tenderID + ' open');
 

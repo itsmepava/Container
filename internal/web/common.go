@@ -118,7 +118,7 @@ func (s *Server) accountNotify(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) accountCompany(w http.ResponseWriter, r *http.Request) {
 	u := userOf(r)
-	if err := s.app.UpdateCompanyProfile(r.Context(), u, u.CompanyID, r.FormValue("name"), r.FormValue("reg"), r.FormValue("address"), r.FormValue("phone")); err != nil {
+	if err := s.app.UpdateCompanyProfile(r.Context(), u, u.CompanyID, r.FormValue("name"), r.FormValue("reg"), r.FormValue("address"), r.FormValue("phone"), r.FormValue("currency")); err != nil {
 		s.fail(w, r, err, "/account")
 		return
 	}

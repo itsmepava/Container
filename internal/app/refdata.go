@@ -90,18 +90,22 @@ type Lane struct {
 	DefaultBox    string
 	DefaultGrade  domain.Grade
 	Rates         map[string]float64 // expected bid per box code
+	Fallback      map[string]float64 // pre-agreed rate per box code when nobody bids
+	FallbackID    int64              // pre-agreed forwarder
+	FallbackName  string
 }
 
 func (l *Lane) Label() string { return l.Origin.Label() + " → " + l.Dest.Label() }
 func (l *Lane) Short() string { return l.Origin.Name + " → " + l.Dest.Name }
 
-const laneCols = `l.id, o.code, o.name, o.country, d.code, d.name, d.country, l.active, l.coload_rate, l.estimate_per_wm, l.origin_cfs, l.default_box, l.default_grade`
+const laneCols = `l.id, o.code, o.name, o.country, d.code, d.name, d.country, l.active, l.coload_rate, l.estimate_per_wm, l.origin_cfs, l.default_box, l.default_grade,
+	COALESCE(l.fallback_company_id,0), COALESCE((SELECT name FROM companies WHERE id=l.fallback_company_id),'')`
 
 func scanLane(row pgx.Row) (*Lane, error) {
-	l := &Lane{Rates: map[string]float64{}}
+	l := &Lane{Rates: map[string]float64{}, Fallback: map[string]float64{}}
 	var g string
 	err := row.Scan(&l.ID, &l.Origin.Code, &l.Origin.Name, &l.Origin.Country, &l.Dest.Code, &l.Dest.Name, &l.Dest.Country,
-		&l.Active, &l.ColoadRate, &l.EstimatePerWM, &l.OriginCFS, &l.DefaultBox, &g)
+		&l.Active, &l.ColoadRate, &l.EstimatePerWM, &l.OriginCFS, &l.DefaultBox, &g, &l.FallbackID, &l.FallbackName)
 	l.DefaultGrade = domain.Grade(g)
 	return l, err
 }
@@ -116,7 +120,7 @@ func (a *App) loadRates(ctx context.Context, lanes []*Lane) error {
 		byID[l.ID] = l
 		ids = append(ids, l.ID)
 	}
-	rows, err := a.DB.Query(ctx, `SELECT lane_id, box_code, expected_bid FROM lane_box_rates WHERE lane_id = ANY($1)`, ids)
+	rows, err := a.DB.Query(ctx, `SELECT lane_id, box_code, expected_bid, fallback_rate FROM lane_box_rates WHERE lane_id = ANY($1)`, ids)
 	if err != nil {
 		return err
 	}
@@ -124,11 +128,16 @@ func (a *App) loadRates(ctx context.Context, lanes []*Lane) error {
 	for rows.Next() {
 		var id int64
 		var code string
-		var v float64
-		if err := rows.Scan(&id, &code, &v); err != nil {
+		var v, fb float64
+		if err := rows.Scan(&id, &code, &v, &fb); err != nil {
 			return err
 		}
-		byID[id].Rates[code] = v
+		if v > 0 {
+			byID[id].Rates[code] = v
+		}
+		if fb > 0 {
+			byID[id].Fallback[code] = fb
+		}
 	}
 	return rows.Err()
 }
@@ -170,6 +179,8 @@ type LaneInput struct {
 	DefaultBox    string
 	DefaultGrade  string
 	Rates         map[string]float64
+	Fallback      map[string]float64
+	FallbackID    int64
 }
 
 func (a *App) SaveLane(ctx context.Context, actor *User, in LaneInput) (int64, error) {
@@ -202,12 +213,26 @@ func (a *App) SaveLane(ctx context.Context, actor *User, in LaneInput) (int64, e
 		if _, err := tx.Exec(ctx, `DELETE FROM lane_box_rates WHERE lane_id=$1`, id); err != nil {
 			return err
 		}
-		for code, v := range in.Rates {
-			if v > 0 {
-				if _, err := tx.Exec(ctx, `INSERT INTO lane_box_rates(lane_id,box_code,expected_bid) VALUES ($1,$2,$3)`, id, code, v); err != nil {
+		codes := map[string]bool{}
+		for c := range in.Rates {
+			codes[c] = true
+		}
+		for c := range in.Fallback {
+			codes[c] = true
+		}
+		for code := range codes {
+			if in.Rates[code] > 0 || in.Fallback[code] > 0 {
+				if _, err := tx.Exec(ctx, `INSERT INTO lane_box_rates(lane_id,box_code,expected_bid,fallback_rate) VALUES ($1,$2,$3,$4)`, id, code, in.Rates[code], in.Fallback[code]); err != nil {
 					return err
 				}
 			}
+		}
+		var fb any
+		if in.FallbackID != 0 {
+			fb = in.FallbackID
+		}
+		if _, err := tx.Exec(ctx, `UPDATE lanes SET fallback_company_id=$2 WHERE id=$1`, id, fb); err != nil {
+			return err
 		}
 		return a.Audit(ctx, tx, actor, "lane.save", "lane", id, fmt.Sprintf("Saved lane %s → %s", in.Origin, in.Dest), in)
 	})
@@ -691,4 +716,39 @@ func sortedKeys(m map[string]float64) []string {
 	}
 	sort.Strings(ks)
 	return ks
+}
+
+// ImportHSCodes upserts a tariff list from CSV rows: code, description.
+// Codes are normalised (600632 → 6006.32); rows with invalid codes are skipped.
+func (a *App) ImportHSCodes(ctx context.Context, actor *User, rows [][]string) (added, skipped int, err error) {
+	err = a.Tx(ctx, func(tx pgx.Tx) error {
+		for _, r := range rows {
+			if len(r) < 2 {
+				skipped++
+				continue
+			}
+			code := domain.NormalizeHSCode(r[0])
+			desc := strings.TrimSpace(r[1])
+			if domain.ValidateHSCode(code) != nil || desc == "" {
+				skipped++
+				continue
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO hs_codes(code,description) VALUES ($1,$2) ON CONFLICT (code) DO UPDATE SET description=EXCLUDED.description`, code, desc); err != nil {
+				return err
+			}
+			added++
+		}
+		if added == 0 {
+			return Errf("No valid rows found. Use two columns: HS code, description (e.g. 6006.32, Knitted synthetic fabric, dyed).")
+		}
+		return a.Audit(ctx, tx, actor, "hs.import", "hs_codes", 0, fmt.Sprintf("Imported %d HS codes (%d skipped)", added, skipped), nil)
+	})
+	return
+}
+
+// HSCount is the number of codes in the tariff list.
+func (a *App) HSCount(ctx context.Context) int {
+	var n int
+	_ = a.DB.QueryRow(ctx, `SELECT count(*) FROM hs_codes`).Scan(&n)
+	return n
 }

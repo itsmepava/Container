@@ -40,12 +40,12 @@
 
   {{if $v.Selected}}
   <section class="card flush">
-    <div class="card-head" style="padding:18px 20px 0"><h2>Per shipper, if awarded to {{$v.Selected.Bid.CompanyName}}</h2><span class="muted small">Split by W/M · fee USD {{n2 $v.FeePerWM}} per W/M</span></div>
+    <div class="card-head" style="padding:18px 20px 0"><h2>Per shipper, if awarded to {{$v.Selected.Bid.CompanyName}}</h2><span class="muted small">Split by W/M · fee USD {{n2 $v.FeePerWM}} per W/M{{if gt $v.HandlingCents 0}} + USD {{money $v.HandlingCents}} per booking{{end}}</span></div>
     <div class="table-wrap"><table class="table-card">
       <thead><tr><th>Shipper</th><th class="right">W/M</th><th class="right">Freight</th><th class="right">Fee</th><th class="right">Total</th><th class="right">Cap</th><th class="right">All-in / W/M</th><th>Docs</th></tr></thead>
       <tbody>
       {{range $v.Bills}}
-      <tr><td><a href="/ops/bookings/{{.BookingID}}">{{.CompanyName}}</a><div class="faint small mono">{{.Ref}}</div></td><td class="right mono">{{n2 .WM}}</td><td class="right mono">{{money .FreightCents}}</td><td class="right mono">{{money .FeeCents}}</td>
+      <tr><td><a href="/ops/bookings/{{.BookingID}}">{{.CompanyName}}</a><div class="faint small mono">{{.Ref}}</div></td><td class="right mono">{{n2 .WM}}</td><td class="right mono">{{money .FreightCents}}</td><td class="right mono">{{money (add64 .FeeCents .HandlingCents)}}</td>
         <td class="right mono"><b>{{money .TotalCents}}</b></td><td class="right mono {{if .CapApplied}}red{{end}}">{{money .CapCents}}</td><td class="right mono">{{n2 .AllInPerWM}}</td>
         <td>{{with index $d.Missing .BookingID}}<span class="pill amber">{{join . ", "}}</span>{{else}}<span class="pill green">OK</span>{{end}}</td></tr>
       {{end}}
@@ -63,7 +63,7 @@
 <aside class="stack sticky">
   {{if eq $t.Status "awarded"}}
   <section class="card good">
-    <div class="eyebrow green">Awarded{{with $t.AwardedAt}} {{dtp .}}{{end}}</div>
+    <div class="eyebrow green">Awarded{{with $t.AwardedAt}} {{dtp .}}{{end}}{{if eq $t.AwardKind "fallback"}} · pre-agreed fallback rate{{end}}</div>
     <h2 style="margin:6px 0">{{$v.Selected.Bid.CompanyName}} · USD {{moneyShort $v.Selected.Bid.AmountCents}}</h2>
     <div class="kv"><span>Freight per W/M</span><span>USD {{n2 $v.Summary.FreightPerWM}}</span></div>
     <div class="kv"><span>Eimsky fees</span><span>USD {{moneyShort $v.Summary.FeeCents}}</span></div>
@@ -73,8 +73,12 @@
   <section class="card">
     <h3 style="margin-bottom:6px">Forwarder documents</h3>
     {{range $d.Docs}}<div class="doc"><span class="ic ok">{{template "icon-check"}}</span><div class="body"><div class="name">{{docLabel .Kind}}</div><div class="sub"><a href="/docs/{{.ID}}" target="_blank" rel="noopener">{{.Filename}}</a></div></div></div>
-    {{else}}<p class="muted small">Waiting for the forwarder's booking confirmation. Invoices go out once it's in and shippers' documents are complete.</p>{{end}}
-    <form method="post" action="/ops/tenders/{{$t.ID}}/docs" enctype="multipart/form-data" class="upload btn sm" style="margin-top:8px">{{template "csrf" $.CSRF}}<input type="hidden" name="kind" value="booking_confirmation">{{template "icon-upload"}} Upload on forwarder's behalf<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" data-autosubmit></form>
+    {{else}}<p class="muted small">Waiting for the forwarder's booking confirmation and B/L copy (due within 24 hours of award). Invoices go out once the confirmation is in and shippers' documents are complete.</p>{{end}}
+    <div class="row" style="margin-top:8px">
+      <form method="post" action="/ops/tenders/{{$t.ID}}/docs" enctype="multipart/form-data" class="upload btn sm">{{template "csrf" $.CSRF}}<input type="hidden" name="kind" value="booking_confirmation">{{template "icon-upload"}} Booking confirmation<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" data-autosubmit aria-label="Upload booking confirmation"></form>
+      <form method="post" action="/ops/tenders/{{$t.ID}}/docs" enctype="multipart/form-data" class="upload btn sm">{{template "csrf" $.CSRF}}<input type="hidden" name="kind" value="bl_copy">{{template "icon-upload"}} B/L copy<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" data-autosubmit aria-label="Upload B/L copy"></form>
+    </div>
+    <p class="faint small" style="margin:6px 0 0">Upload on the forwarder's behalf if they sent it by email.</p>
   </section>
   {{else if $v.Selected}}
   {{$s := $v.Selected}}{{$isAuto := and $v.AutoPick (eq $s.Bid.ID $v.AutoPick.Bid.ID)}}
@@ -113,6 +117,16 @@
   </section>
   {{end}}
 
+  {{if and (eq $t.Status "closed") (not $v.AutoPick)}}
+  <section class="card warn">
+    <h3 style="margin-bottom:6px">No usable bids</h3>
+    <p class="small">Nobody placed a compliant bid on the requested vessel. Use the lane's pre-agreed rate, co-load the lots, or reopen the tender below.</p>
+    {{with $d.Fallback}}
+    <form method="post" action="/ops/tenders/{{$t.ID}}/fallback" data-confirm="Award {{$t.Ref}} to {{.CompanyName}} at the pre-agreed USD {{moneyShort .AmountCents}}?" style="margin-top:10px">{{template "csrf" $.CSRF}}<p class="small" style="margin:0 0 6px">Pre-agreed: <b>{{.CompanyName}}</b> at <b>USD {{moneyShort .AmountCents}}</b> per {{$t.Container.BoxCode}}.</p><button class="btn primary block">Award at the pre-agreed rate</button></form>
+    {{else}}<p class="muted small" style="margin-top:6px">This lane has no pre-agreed forwarder for a {{$t.Container.BoxCode}}. <a href="/admin/lanes/{{$t.Sailing.Lane.ID}}">Set one</a>.</p>{{end}}
+    <form method="post" action="/ops/tenders/{{$t.ID}}/coload" data-confirm="Send every lot in this box to the co-load partner? Shippers will be told their cost." style="margin-top:8px">{{template "csrf" $.CSRF}}<button class="btn block">Co-load all lots instead</button></form>
+  </section>
+  {{end}}
   {{if ne $t.Status "awarded"}}
   <section class="card">
     <h3 style="margin-bottom:10px">{{if eq $t.Status "open"}}Extend deadline{{else}}Reopen tender{{end}}</h3>

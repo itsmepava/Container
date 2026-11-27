@@ -47,6 +47,7 @@ var docKinds = map[string]struct {
 	"packing_list":         {"booking", "Supplier packing list", "Optional in phase 1."},
 	"import_licence":       {"booking", "Import licence or permit", "Requested for this cargo category."},
 	"booking_confirmation": {"tender", "Forwarder booking confirmation", "Uploaded by the forwarder."},
+	"bl_copy":              {"tender", "Forwarder B/L copy", "Uploaded by the forwarder within 24 hours of award."},
 	"br_certificate":       {"company", "Business registration", "Certificate of incorporation or BR."},
 	"ff_licence":           {"company", "Freight forwarder licence", "Photo or PDF."},
 	"origin_agent":         {"company", "Origin agent in China or India", "Optional: agency agreement or letter."},
@@ -128,20 +129,24 @@ func (a *App) BookingDocReqs(ctx context.Context, b *Booking) ([]DocReq, error) 
 		reqs[i].Label, reqs[i].Help, reqs[i].Doc = k.Label, k.Help, byKind[reqs[i].Kind]
 	}
 	if b.Mode == "pool" {
-		r := DocReq{Kind: "booking_confirmation", Label: docKinds["booking_confirmation"].Label, Help: docKinds["booking_confirmation"].Help, ByOther: true}
+		conf := DocReq{Kind: "booking_confirmation", Label: docKinds["booking_confirmation"].Label, Help: docKinds["booking_confirmation"].Help, ByOther: true}
+		bl := DocReq{Kind: "bl_copy", Label: docKinds["bl_copy"].Label, Help: docKinds["bl_copy"].Help, ByOther: true}
 		if b.ContainerID != 0 {
 			var tid int64
 			if a.DB.QueryRow(ctx, `SELECT id FROM tenders WHERE container_id=$1 AND status='awarded'`, b.ContainerID).Scan(&tid) == nil {
 				if tds, err := a.DocsFor(ctx, "tender", tid); err == nil {
 					for _, d := range tds {
-						if d.Kind == "booking_confirmation" {
-							r.Doc = d
+						switch d.Kind {
+						case "booking_confirmation":
+							conf.Doc = d
+						case "bl_copy":
+							bl.Doc = d
 						}
 					}
 				}
 			}
 		}
-		reqs = append(reqs, r)
+		reqs = append(reqs, conf, bl)
 	}
 	return reqs, nil
 }
@@ -214,7 +219,7 @@ func (a *App) canWriteDoc(ctx context.Context, u *User, ownerKind string, ownerI
 		var winner int64
 		err := a.DB.QueryRow(ctx, `SELECT COALESCE(b.company_id,0) FROM tenders t LEFT JOIN bids b ON b.id=t.awarded_bid_id WHERE t.id=$1 AND t.status='awarded'`, ownerID).Scan(&winner)
 		if err != nil || winner != u.CompanyID {
-			return Errf("Only the winning forwarder can upload the booking confirmation.")
+			return Errf("Only the winning forwarder can upload the booking confirmation or B/L copy.")
 		}
 	case "company":
 		if u.IsStaff() {

@@ -20,6 +20,10 @@
   <h3 style="margin:8px 0 10px">Expected all-in bid per container (USD)</h3>
   <p class="muted small">Used for pool decisions and container options before real bids arrive.</p>
   <div class="form-row">{{range .D.Specs}}<div class="field"><label for="rate_{{.Code}}">{{.Code}}</label><input id="rate_{{.Code}}" name="rate_{{.Code}}" inputmode="decimal" value="{{with index $l.Rates .Code}}{{n0 .}}{{end}}"></div>{{end}}</div>
+  <h3 style="margin:8px 0 6px">No-bid fallback</h3>
+  <p class="muted small">If a tender closes with no usable bid, ops can award it to this forwarder at its pre-agreed all-in rate.</p>
+  <div class="field"><label for="fallback_company">Pre-agreed forwarder</label><select id="fallback_company" name="fallback_company"><option value="0">None</option>{{range .D.Forwarders}}<option value="{{.ID}}" {{if eq .ID $l.FallbackID}}selected{{end}}>{{.Name}}</option>{{end}}</select></div>
+  <div class="form-row">{{range .D.Specs}}<div class="field"><label for="fallback_{{.Code}}">{{.Code}} fallback rate (USD)</label><input id="fallback_{{.Code}}" name="fallback_{{.Code}}" inputmode="decimal" value="{{with index $l.Fallback .Code}}{{n0 .}}{{end}}"></div>{{end}}</div>
   <label class="check" style="margin-bottom:16px"><input type="checkbox" name="active" {{if $l.Active}}checked{{end}}> Lane is active (factories can book it)</label>
   <button class="btn primary">Save lane</button>
 </form>

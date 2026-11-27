@@ -142,7 +142,7 @@ export type Shipper = {
   documents: Doc[];
 };
 
-export type Award = { tender: Tender; shippers: Shipper[]; originCfs: string; confirmation?: Doc };
+export type Award = { tender: Tender; shippers: Shipper[]; originCfs: string; confirmation?: Doc; blCopy?: Doc };
 export type Lane = { id: number; label: string; origin: string; dest: string };
 export type Notice = { id: number; title: string; body: string; read: boolean; createdAt: string };
 export type Inclusion = { key: string; label: string };
@@ -180,6 +180,7 @@ export const api = {
   withdraw: (id: number) => request<Tender>('DELETE', `/tenders/${id}/bid`),
   award: (id: number) => request<Award>('GET', `/tenders/${id}/award`),
   uploadConfirmation: async (id: number, file: PickedFile) => request<Doc>('POST', `/tenders/${id}/confirmation`, undefined, await formWith(file)),
+  uploadTenderDoc: async (id: number, kind: 'booking_confirmation' | 'bl_copy', file: PickedFile) => request<Doc>('POST', `/tenders/${id}/documents`, undefined, await formWith(file, { kind })),
   documentLink: (id: number) => request<{ url: string }>('GET', `/documents/${id}/link`),
   savePushToken: (token: string, platform: string) => request<{ ok: boolean }>('POST', '/push-token', { token, platform }),
   notifications: () => request<{ items: Notice[]; unread: number }>('GET', '/notifications'),

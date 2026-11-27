@@ -16,7 +16,7 @@
 {{define "content"}}
 {{$d := .D}}{{$p := $d.P}}{{$s := $p.Sailing}}
 {{if $d.Locked}}
-<div class="alert info" style="margin-bottom:18px"><div><b>This plan is locked ({{lower $s.StatusLabel}}).</b>
+<div class="alert info" style="margin-bottom:18px"><div><b>This FCL is finalized ({{lower $s.StatusLabel}}).</b>
   {{range $p.Boxes}}{{with .Tender}} <a href="/ops/tenders/{{.ID}}">{{.Ref}}</a> · {{.Status}} · {{.Bids}} bid(s).{{end}}{{end}}
   {{if eq $s.Status "coload"}}Every lot goes with the co-load partner.{{end}}</div></div>
 {{end}}
@@ -186,10 +186,10 @@
       {{if and (not $p.Blockers) (not $p.Warnings)}}<li>Load and weight checks passed</li>{{end}}
     </ul>
     {{if not $d.Locked}}
-    <form method="post" action="/ops/sailings/{{$s.ID}}/lock" data-confirm="Lock the plan and open bidding? Shippers can't change their bookings after this.">{{template "csrf" $.CSRF}}
-      <button class="btn primary block" style="margin-top:12px" {{if not $p.CanLock}}disabled{{end}}>{{template "icon-lock"}} Lock plan and open bidding</button>
+    <form method="post" action="/ops/sailings/{{$s.ID}}/lock" data-confirm="Finalize the FCL and open bidding? New bookings go to the next sailing, and shippers can't change these bookings after this.">{{template "csrf" $.CSRF}}
+      <button class="btn primary block" style="margin-top:12px" {{if not $p.CanLock}}disabled{{end}}>{{template "icon-lock"}} Finalize FCL</button>
     </form>
-    <p class="lock-note">Unlocks when every lot is placed. Forwarders bid on the chosen vessel.</p>
+    <p class="lock-note">Locks the pool and opens a sealed tender to forwarders on this lane. Available once every lot is placed.</p>
     {{end}}
   </section>
 

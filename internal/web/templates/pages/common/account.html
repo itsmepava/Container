@@ -28,6 +28,7 @@
         <div class="field"><label for="cphone">Phone</label><input id="cphone" name="phone" value="{{.D.Company.Phone}}"></div>
       </div>
       <div class="field"><label for="address">Address</label><input id="address" name="address" value="{{.D.Company.Address}}"><div class="help">Shown on your invoices.</div></div>
+      <div class="field"><label for="currency">Invoice currency</label><select id="currency" name="currency"><option value="USD" {{if eq .D.Company.InvoiceCurrency "USD"}}selected{{end}}>US dollars (USD)</option><option value="LKR" {{if eq .D.Company.InvoiceCurrency "LKR"}}selected{{end}}>Sri Lankan rupees (LKR)</option></select><div class="help">LKR invoices show the USD amount and the exchange rate used.</div></div>
       <button class="btn primary">Save company</button>
     </form>
   </section>

@@ -12,9 +12,9 @@
     <div class="form-row">
       <div class="field"><label for="lock">Plan locks</label><input id="lock" type="datetime-local" name="lock" value="{{local $f.Lock}}"></div>
       <div class="field"><label for="close">Bids close</label><input id="close" type="datetime-local" name="close" value="{{local $f.Close}}"></div>
-      <div class="field"><label for="cutoff">CFS cut-off</label><input id="cutoff" type="datetime-local" name="cutoff" value="{{local $f.Cutoff}}"></div>
+      <div class="field"><label for="cutoff">CFS cut-off</label><input id="cutoff" type="datetime-local" name="cutoff" value="{{local $f.Cutoff}}" data-derive-lock="{{$f.DecisionHours}}" data-derive-close="{{$f.BidCloseHours}}"></div>
     </div>
-    <p class="muted small">Times are Colombo time. Order: plan locks → bids close → CFS cut-off.</p>
+    <p class="muted small">Times are Colombo time. Changing the cut-off sets the plan decision {{$f.DecisionHours}} h and bid close {{$f.BidCloseHours}} h before it (change these defaults in Settings).</p>
   </section>
   {{range $i, $v := (list2 $f.VA $f.VB)}}{{$p := index (list2s "a_" "b_") $i}}
   <section class="card">

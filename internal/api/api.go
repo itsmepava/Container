@@ -66,6 +66,7 @@ func (x *API) Handler() http.Handler {
 				r.Delete("/tenders/{id}/bid", x.withdraw)
 				r.Get("/tenders/{id}/award", x.award)
 				r.Post("/tenders/{id}/confirmation", x.confirmation)
+				r.Post("/tenders/{id}/documents", x.confirmation)
 			})
 		})
 	})
@@ -605,6 +606,9 @@ func (x *API) award(w http.ResponseWriter, r *http.Request) {
 	if d.Confirmation != nil {
 		out["confirmation"] = toDoc(d.Confirmation)
 	}
+	if d.BLCopy != nil {
+		out["blCopy"] = toDoc(d.BLCopy)
+	}
 	ok(w, out)
 }
 
@@ -614,7 +618,11 @@ func (x *API) confirmation(w http.ResponseWriter, r *http.Request) {
 		x.err(w, err)
 		return
 	}
-	d, err := x.app.UploadDoc(r.Context(), userOf(r), "tender", idParam(r), "booking_confirmation", name, data, ct)
+	kind := r.FormValue("kind")
+	if kind != "bl_copy" {
+		kind = "booking_confirmation"
+	}
+	d, err := x.app.UploadDoc(r.Context(), userOf(r), "tender", idParam(r), kind, name, data, ct)
 	if err != nil {
 		x.err(w, err)
 		return

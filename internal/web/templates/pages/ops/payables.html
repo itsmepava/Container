@@ -1,0 +1,40 @@
+{{define "content"}}
+<div class="page-head"><div><h1>Forwarder payables</h1><div class="sub">Eimsky pays each winning forwarder one amount per container.</div></div></div>
+<div class="grid cols-3" style="margin-bottom:16px">
+  <div class="card stat"><div class="label">To pay</div><div class="value">USD {{money .D.Due}}</div></div>
+  <div class="card stat"><div class="label">Paid</div><div class="value">USD {{money .D.Paid}}</div></div>
+  <div class="card stat"><div class="label">Containers</div><div class="value">{{len .D.Items}}</div></div>
+</div>
+<div class="tabs">
+  <a href="/ops/payables" class="{{if eq .D.Status ""}}on{{end}}">All</a>
+  <a href="/ops/payables?status=due" class="{{if eq .D.Status "due"}}on{{end}}">To pay</a>
+  <a href="/ops/payables?status=paid" class="{{if eq .D.Status "paid"}}on{{end}}">Paid</a>
+</div>
+<div class="card flush">
+{{if .D.Items}}
+<div class="table-wrap"><table class="table-card">
+  <thead><tr><th>Tender</th><th>Forwarder</th><th>Lane · week</th><th class="right">Amount USD</th><th class="right">Invoiced to factories</th><th>Documents</th><th>Payment</th></tr></thead>
+  <tbody>
+  {{range .D.Items}}
+  <tr>
+    <td><a class="mono" href="/ops/tenders/{{.TenderID}}"><b>{{.Ref}}</b></a><div class="faint small">{{dtp .AwardedAt}}</div></td>
+    <td>{{.Forwarder}}</td>
+    <td>{{.Lane}}<div class="muted small">Week {{.Week}} · {{.BoxCode}}</div></td>
+    <td class="right mono"><b>{{money .AmountCents}}</b></td>
+    <td class="right mono">{{money .InvoicedCents}}</td>
+    <td>{{if .Confirmation}}<span class="pill green">Confirmation</span>{{else}}<span class="pill amber">No confirmation</span>{{end}} {{if .BLCopy}}<span class="pill green">B/L</span>{{else}}<span class="pill amber">No B/L</span>{{end}}</td>
+    <td>
+      {{if .PaidAt}}
+        <div class="row" style="gap:6px"><span class="pill green">Paid {{dtp .PaidAt}}</span>{{if .PaidRef}}<span class="faint small">{{.PaidRef}}</span>{{end}}
+        <form method="post" action="/ops/tenders/{{.TenderID}}/payout" class="inline-form" data-keep-scroll>{{template "csrf" $.CSRF}}<input type="hidden" name="paid" value="0"><button class="btn sm ghost">Undo</button></form></div>
+      {{else}}
+        <form method="post" action="/ops/tenders/{{.TenderID}}/payout" class="row" style="gap:6px;flex-wrap:nowrap" data-keep-scroll>{{template "csrf" $.CSRF}}<input type="hidden" name="paid" value="1"><input name="ref" class="input-sm" placeholder="Bank ref (optional)" style="width:150px" aria-label="Payment reference"><button class="btn sm">Mark paid</button></form>
+      {{end}}
+    </td>
+  </tr>
+  {{end}}
+  </tbody>
+</table></div>
+{{else}}{{template "empty" (dict "Title" "Nothing here" "Body" "Awarded containers show up here with the amount owed to the forwarder.")}}{{end}}
+</div>
+{{end}}

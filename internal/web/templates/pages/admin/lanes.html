@@ -7,7 +7,7 @@
   <div class="card-head">
     <div><div class="row"><h2>{{$l.Label}}</h2>{{if not $l.Active}}<span class="pill red">Inactive</span>{{end}}</div>
       <div class="muted small">Default {{$l.DefaultBox}} grade {{$l.DefaultGrade}} · co-load USD {{n2 $l.ColoadRate}}/W/M · booking estimate USD {{n2 $l.EstimatePerWM}}/W/M{{if $l.OriginCFS}} · {{$l.OriginCFS}}{{end}}
-        · expected bids {{range $code, $v := $l.Rates}}{{$code}} {{usd0 $v}} {{end}}</div></div>
+        · expected bids {{range $code, $v := $l.Rates}}{{$code}} {{usd0 $v}} {{end}}{{if $l.FallbackName}} · no-bid fallback {{$l.FallbackName}}{{end}}</div></div>
     <div class="row"><a class="btn sm" href="/admin/lanes/{{$l.ID}}">Edit lane</a><a class="btn sm" href="/admin/sailings/new?lane={{$l.ID}}">+ Sailing</a></div>
   </div>
   {{if .Sailings}}

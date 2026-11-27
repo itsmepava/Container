@@ -36,6 +36,7 @@ type Booking struct {
 	Mode          string
 	FreightCents  *int64
 	FeeCents      *int64
+	HandlingCents *int64
 	TotalCents    *int64
 	CapApplied    bool
 	PricedAt      *time.Time
@@ -78,13 +79,13 @@ func (b *Booking) StatusLabel() string {
 }
 
 const bookingCols = `b.id,b.ref,b.company_id,c.name,b.created_by,b.sailing_id,b.box_code,b.category,b.pieces,b.cbm,b.kg,b.wm,b.cap_cents,b.status,
-	b.hold_expires_at,COALESCE(b.container_id,0),b.mode,b.freight_cents,b.fee_cents,b.total_cents,b.cap_applied,b.priced_at,b.note,b.confirmed_at,b.cancelled_at,b.created_at`
+	b.hold_expires_at,COALESCE(b.container_id,0),b.mode,b.freight_cents,b.fee_cents,b.handling_cents,b.total_cents,b.cap_applied,b.priced_at,b.note,b.confirmed_at,b.cancelled_at,b.created_at`
 
 func scanBooking(row pgx.Row) (*Booking, error) {
 	b := &Booking{}
 	var cat string
 	err := row.Scan(&b.ID, &b.Ref, &b.CompanyID, &b.CompanyName, &b.CreatedBy, &b.SailingID, &b.BoxCode, &cat, &b.Pieces, &b.CBM, &b.Kg, &b.WM, &b.CapCents, &b.Status,
-		&b.HoldExpiresAt, &b.ContainerID, &b.Mode, &b.FreightCents, &b.FeeCents, &b.TotalCents, &b.CapApplied, &b.PricedAt, &b.Note, &b.ConfirmedAt, &b.CancelledAt, &b.CreatedAt)
+		&b.HoldExpiresAt, &b.ContainerID, &b.Mode, &b.FreightCents, &b.FeeCents, &b.HandlingCents, &b.TotalCents, &b.CapApplied, &b.PricedAt, &b.Note, &b.ConfirmedAt, &b.CancelledAt, &b.CreatedAt)
 	b.Category = domain.Category(cat)
 	return b, err
 }
@@ -296,6 +297,7 @@ type Quote struct {
 	Warnings  []string
 	CanBook   bool
 	FreeAfter float64
+	HSWarning string
 }
 
 func (q *Quote) AllPassed() bool { return len(q.Problems) == 0 && len(q.Warnings) == 0 && q.CBM > 0 }
@@ -326,6 +328,29 @@ func (a *App) quote(ctx context.Context, q Querier, in QuoteInput, excludeBookin
 			continue
 		}
 		qt.Lines = append(qt.Lines, l)
+	}
+	// Check the codes against Eimsky's HS list (6-digit heading match).
+	if st := a.Settings(ctx); st.HSCheck != "off" && len(qt.Lines) > 0 {
+		var unknown []string
+		for _, l := range qt.Lines {
+			head := l.HSCode
+			if len(head) > 7 {
+				head = head[:7]
+			}
+			var ok bool
+			_ = q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM hs_codes WHERE code=$1 OR code LIKE $2)`, l.HSCode, head+"%").Scan(&ok)
+			if !ok {
+				unknown = append(unknown, l.HSCode)
+			}
+		}
+		if len(unknown) > 0 {
+			msg := fmt.Sprintf("HS code %s isn't in Eimsky's tariff list. Check it against your supplier's invoice.", strings.Join(unknown, ", "))
+			if st.HSCheck == "block" {
+				qt.LineErrs = append(qt.LineErrs, msg)
+			} else {
+				qt.HSWarning = msg
+			}
+		}
 	}
 	qt.Pieces, qt.CBM, qt.Kg = domain.Totals(qt.Lines)
 	qt.WM = domain.WM(qt.CBM, qt.Kg)
@@ -363,6 +388,9 @@ func (a *App) quote(ctx context.Context, q Querier, in QuoteInput, excludeBookin
 				break
 			}
 		}
+	}
+	if qt.HSWarning != "" {
+		qt.Warnings = append(qt.Warnings, qt.HSWarning)
 	}
 	if qt.CBM > 0 && !qt.Fits {
 		qt.Warnings = append(qt.Warnings, fmt.Sprintf("Your %.2f CBM doesn't fit the %.1f CBM left. You can still book: Eimsky will offer the next sailing or co-loading, and your cost cap stays the same.", qt.CBM, qt.Space.Free()))

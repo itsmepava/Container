@@ -237,3 +237,15 @@
 document.addEventListener("change", function (e) {
   if (e.target.matches("select[data-nav]")) location.href = e.target.value;
 });
+
+// New sailing: derive plan lock and bid close from the CFS cut-off.
+document.addEventListener("change", function (e) {
+  var c = e.target;
+  if (!c.matches("[data-derive-lock]")) return;
+  var t = new Date(c.value);
+  if (isNaN(t)) return;
+  function fmt(d) { var p = function (n) { return String(n).padStart(2, "0"); }; return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + "T" + p(d.getHours()) + ":" + p(d.getMinutes()); }
+  var lock = document.querySelector('[name="lock"]'), close = document.querySelector('[name="close"]');
+  if (lock) lock.value = fmt(new Date(t - c.getAttribute("data-derive-lock") * 3600e3));
+  if (close) close.value = fmt(new Date(t - c.getAttribute("data-derive-close") * 3600e3));
+});

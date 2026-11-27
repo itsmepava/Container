@@ -166,7 +166,11 @@ func (a *App) SeedDemo(ctx context.Context) error {
 
 	// Lanes.
 	lane := func(o, d string, cfs string, box string, rates map[string]float64, coload, est float64) int64 {
-		id, err := a.SaveLane(ctx, admin, LaneInput{Origin: o, Dest: d, Active: true, ColoadRate: coload, EstimatePerWM: est, OriginCFS: cfs, DefaultBox: box, DefaultGrade: "A", Rates: rates})
+		fallback := map[string]float64{}
+		for code, v := range rates {
+			fallback[code] = v + 250 // pre-agreed, above the usual market
+		}
+		id, err := a.SaveLane(ctx, admin, LaneInput{Origin: o, Dest: d, Active: true, ColoadRate: coload, EstimatePerWM: est, OriginCFS: cfs, DefaultBox: box, DefaultGrade: "A", Rates: rates, Fallback: fallback, FallbackID: fws[2]})
 		must(err)
 		return id
 	}
@@ -352,7 +356,7 @@ func (a *App) SeedDemo(ctx context.Context) error {
 	_, _ = q.Exec(ctx, `UPDATE sailings SET chosen_vessel_id=$2, plan_lock_at=$3, bid_close_at=$4 WHERE id=$1`, shaW, fastW, now.Add(-26*time.Hour), now.Add(-2*time.Hour))
 	_ = a.Audit(ctx, q, admin, "plan.vessel", "sailing", shaW, "Vessel overridden to MV Indigo Bay · 048E, fast, direct", nil)
 	tW := tender(shaW, cid, fastW, now.Add(-2*time.Hour), w1, []int{0, 1, 2, 3, 4, 5})
-	_ = a.Audit(ctx, q, admin, "tender.open", "tender", tW, "Plan locked, tender opened to 6 forwarders", nil)
+	_ = a.Audit(ctx, q, admin, "tender.open", "tender", tW, "FCL finalized, tender opened to 6 forwarders", nil)
 	bid(tW, 3, 2250, stdW, now.Add(-20*time.Hour))
 	bid(tW, 0, 2350, fastW, now.Add(-14*time.Hour))
 	bid(tW, 1, 2410, fastW, now.Add(-9*time.Hour))
@@ -379,7 +383,7 @@ func (a *App) SeedDemo(ctx context.Context) error {
 	stdN, _ := vessels(ngbW)
 	_, _ = q.Exec(ctx, `UPDATE sailings SET plan_lock_at=$2, bid_close_at=$3 WHERE id=$1`, ngbW, now.Add(-10*time.Hour), now.Add(30*time.Hour))
 	tN := tender(ngbW, cidN, stdN, now.Add(30*time.Hour), w1, allFw)
-	_ = a.Audit(ctx, q, admin, "tender.open", "tender", tN, "Plan locked, tender opened to 6 forwarders", nil)
+	_ = a.Audit(ctx, q, admin, "tender.open", "tender", tN, "FCL finalized, tender opened to 6 forwarders", nil)
 	bid(tN, 1, 1990, stdN, now.Add(-3*time.Hour))
 	bid(tN, 2, 2060, stdN, now.Add(-2*time.Hour))
 

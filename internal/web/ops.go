@@ -30,6 +30,10 @@ func (s *Server) opsRoutes(r chi.Router) {
 	r.Post("/tenders/{id}/award", s.tenderAward)
 	r.Post("/tenders/{id}/extend", s.tenderExtend)
 	r.Post("/tenders/{id}/close", s.tenderClose)
+	r.Post("/tenders/{id}/fallback", s.tenderFallback)
+	r.Post("/tenders/{id}/coload", s.tenderCoload)
+	r.Get("/payables", s.payablesPage)
+	r.Post("/tenders/{id}/payout", s.tenderPayout)
 	r.Post("/tenders/{id}/invite", s.tenderInvite)
 	r.Post("/tenders/{id}/docs", s.tenderUpload)
 	r.Get("/bookings", s.opsBookings)
@@ -113,10 +117,12 @@ func (s *Server) decide(w http.ResponseWriter, r *http.Request) {
 	switch opt {
 	case "coload":
 		s.done(w, r, "Every lot on this sailing goes with the co-load partner. Shippers have been told their cost.", "")
+	case "roll":
+		s.done(w, r, "Every lot moved to the next sailing and the shippers were told. Their cost caps stay the same.", "")
 	case "hybrid":
 		s.done(w, r, "Switched to a smaller box; lots that didn't fit are co-loaded. Review the plan, then lock it.", fmt.Sprintf("/ops/sailings/%d/plan", id))
 	default:
-		s.done(w, r, "Own box it is. Finish the plan and lock it to open bidding.", fmt.Sprintf("/ops/sailings/%d/plan", id))
+		s.done(w, r, "Own box it is. Finish the plan, then finalize the FCL to open bidding.", fmt.Sprintf("/ops/sailings/%d/plan", id))
 	}
 }
 
@@ -288,10 +294,10 @@ func (s *Server) planLock(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if len(ids) == 1 {
-		s.done(w, r, "Plan locked. Forwarders on this lane have been notified and can bid now.", fmt.Sprintf("/ops/tenders/%d", ids[0]))
+		s.done(w, r, "FCL finalized. Forwarders on this lane have been notified and can bid now.", fmt.Sprintf("/ops/tenders/%d", ids[0]))
 		return
 	}
-	s.done(w, r, fmt.Sprintf("Plan locked. %d tenders are open for bidding.", len(ids)), "/ops/tenders?status=open")
+	s.done(w, r, fmt.Sprintf("FCL finalized. %d tenders are open for bidding.", len(ids)), "/ops/tenders?status=open")
 }
 
 // ---------- Tenders ----------
@@ -310,6 +316,7 @@ func (s *Server) tendersPage(w http.ResponseWriter, r *http.Request) {
 }
 
 type tenderData struct {
+	Fallback   *app.FallbackOffer
 	V          *app.TenderView
 	Forwarders []*app.Company
 	Docs       []*app.Document
@@ -324,7 +331,7 @@ func (s *Server) tenderPage(w http.ResponseWriter, r *http.Request) {
 		s.fail(w, r, err, "")
 		return
 	}
-	d := tenderData{V: v}
+	d := tenderData{V: v, Fallback: s.app.Fallback(ctx, v.Tender)}
 	all, _ := s.app.Companies(ctx, "forwarder", "approved", "")
 	invited := map[string]bool{}
 	for _, n := range v.Invited {
@@ -492,4 +499,48 @@ func (s *Server) tenderClose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.done(w, r, "Bidding closed. Review the bids and award the box.", tenderURL(id))
+}
+
+func (s *Server) tenderFallback(w http.ResponseWriter, r *http.Request) {
+	id := idParam(r, "id")
+	if err := s.app.AwardFallback(r.Context(), userOf(r), id); err != nil {
+		s.fail(w, r, err, tenderURL(id))
+		return
+	}
+	s.done(w, r, "Awarded at the pre-agreed fallback rate. The forwarder and every shipper have been told.", tenderURL(id))
+}
+
+func (s *Server) tenderCoload(w http.ResponseWriter, r *http.Request) {
+	id := idParam(r, "id")
+	if err := s.app.ColoadTender(r.Context(), userOf(r), id); err != nil {
+		s.fail(w, r, err, tenderURL(id))
+		return
+	}
+	s.done(w, r, "Every lot in this box goes with the co-load partner. Shippers have been told their cost.", tenderURL(id))
+}
+
+func (s *Server) payablesPage(w http.ResponseWriter, r *http.Request) {
+	st := r.URL.Query().Get("status")
+	ps, err := s.app.Payables(r.Context(), st)
+	if err != nil {
+		s.fail(w, r, err, "")
+		return
+	}
+	var due, paid int64
+	for _, p := range ps {
+		if p.PaidAt == nil {
+			due += p.AmountCents
+		} else {
+			paid += p.AmountCents
+		}
+	}
+	s.render(w, r, "ops/payables", s.page(r, "Forwarder payables", map[string]any{"Items": ps, "Status": st, "Due": due, "Paid": paid}))
+}
+
+func (s *Server) tenderPayout(w http.ResponseWriter, r *http.Request) {
+	if err := s.app.MarkPayout(r.Context(), userOf(r), idParam(r, "id"), r.FormValue("paid") == "1", r.FormValue("ref")); err != nil {
+		s.fail(w, r, err, "")
+		return
+	}
+	s.done(w, r, "Payment record updated.", "")
 }

@@ -71,17 +71,18 @@
     {{if eq $s.Status "open"}}
     <section class="card">
       <h2 style="margin-bottom:10px">Decide for this sailing</h2>
+      {{if $p.Below}}<div class="alert warn" style="margin-bottom:10px">{{pct $p.PrimaryFill}} full, below the {{pct $p.Threshold}} own-box threshold: co-load, a smaller box or rolling to the next sailing is recommended.</div>{{end}}
       {{if $p.PoolOptions}}
       <div class="stack-sm">
         {{range $p.PoolOptions}}
-        <form method="post" action="/ops/sailings/{{$s.ID}}/decide" class="option {{if .Recommended}}rec{{end}}" data-confirm="{{if eq .Key "coload"}}Send every lot on this sailing to the co-load partner? Shippers will be told their cost.{{else if eq .Key "hybrid"}}Switch to a {{.BoxCode}} and co-load what doesn't fit?{{end}}">
+        <form method="post" action="/ops/sailings/{{$s.ID}}/decide" class="option {{if .Recommended}}rec{{end}}" data-confirm="{{if eq .Key "coload"}}Send every lot on this sailing to the co-load partner? Shippers will be told their cost.{{else if eq .Key "hybrid"}}Switch to a {{.BoxCode}} and co-load what doesn't fit?{{else if eq .Key "roll"}}Move every lot to the next sailing? Shippers will be told; their cost caps stay.{{end}}">
           {{template "csrf" $.CSRF}}<input type="hidden" name="option" value="{{.Key}}">
           <div style="min-width:0">
             <div class="row" style="gap:6px"><b>{{.Title}}</b>{{if .Recommended}}<span class="pill green">Cheapest</span>{{end}}</div>
             <div class="muted small">{{.Detail}}</div>
           </div>
           <div class="right">
-            <div class="p">${{n0 .PerCBM}}<span class="muted small" style="font-weight:500">/CBM</span></div>
+            <div class="p">{{if gt .PerCBM 0.0}}${{n0 .PerCBM}}<span class="muted small" style="font-weight:500">/CBM</span>{{else}}<span class="muted small" style="font-weight:500">next week</span>{{end}}</div>
             <button class="btn sm {{if .Recommended}}primary{{end}}" style="margin-top:6px">{{if eq .Key "own"}}Plan own box{{else}}Choose{{end}}</button>
           </div>
         </form>

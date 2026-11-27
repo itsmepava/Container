@@ -12,7 +12,7 @@
   <tbody>
   {{range .D.Invoices}}
   <tr><td class="mono">{{.Number}}</td><td><a class="mono" href="/f/bookings/{{.BookingID}}">{{.BookingRef}}</a></td><td>{{date .IssuedAt}}</td>
-    <td class="right mono">{{money .FreightCents}}</td><td class="right mono">{{money .FeeCents}}</td><td class="right mono"><b>{{money .TotalCents}}</b></td>
+    <td class="right mono">{{money .FreightCents}}</td><td class="right mono">{{money (add64 .FeeCents .HandlingCents)}}</td><td class="right mono"><b>{{money .TotalCents}}</b>{{if eq .Currency "LKR"}}<div class="faint small">LKR {{money .TotalLocal}}</div>{{end}}</td>
     <td>{{template "status-pill" .Status}}</td><td class="right"><a class="btn sm" href="/f/bookings/{{.BookingID}}/invoice.pdf" target="_blank" rel="noopener">PDF</a></td></tr>
   {{end}}
   </tbody>

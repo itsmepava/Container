@@ -156,7 +156,7 @@ async function openDialogFor(page, action) {
     step('factory: account');
     await fac.goto(BASE + '/account');
     await submit(fac, '/account/profile', 'Profile saved');
-    await submit(fac, '/account/company', 'Company details saved');
+    await submit(fac, '/account/company', 'Company details saved', async f => { await f.locator('[name=currency]').selectOption('LKR'); });
     await submit(fac, '/account/password', 'Password changed', async f => {
       await f.locator('[name=current]').fill('eimsky-demo');
       await f.locator('[name=next]').fill('eimsky-demo');
@@ -248,7 +248,7 @@ async function openDialogFor(page, action) {
       problems.push('[lock] still blocked: ' + (await ops.locator('.checks li.no, [data-blocker]').allTextContents()).join(' | '));
     } else {
       await Promise.all([ops.waitForNavigation(), lock.locator('button').click()]);
-      await result(ops, 'Plan locked');
+      await result(ops, 'FCL finalized');
     }
 
     step('ops: open tender extend, close now, override award');
@@ -280,6 +280,16 @@ async function openDialogFor(page, action) {
     await ops.goto(BASE + '/ops/tenders/5');
     await submit(ops, '/ops/tenders/5/award', 'Awarded');
     await upload(ops, '/ops/tenders/5/docs', 'booking_confirmation', 'uploaded');
+
+    step('ops: forwarder payables');
+    await ops.goto(BASE + '/ops/payables?status=due');
+    const pay = ops.locator('form[action$="/payout"]').first();
+    if (await pay.count()) {
+      const a = await pay.getAttribute('action');
+      await submit(ops, a, 'Payment record updated', async f => { await f.locator('[name=ref]').fill('BOC-2291'); });
+      await ops.goto(BASE + '/ops/payables?status=paid');
+      await submit(ops, a, 'Payment record updated');
+    } else problems.push('[payables] nothing to pay');
 
     step('ops: bookings, booking detail, upload on behalf, cancel');
     await ops.goto(BASE + '/ops/bookings?q=EIM&status=booked');
@@ -382,8 +392,13 @@ async function openDialogFor(page, action) {
       await f.locator('[name=name]').fill('Xiamen');
     });
 
+    step('admin: HS tariff list import');
+    await adm.goto(BASE + '/admin/settings');
+    await Promise.all([adm.waitForNavigation(), adm.locator('form[action="/admin/hs-import"] input[type=file]').setInputFiles({ name: 'hs.csv', mimeType: 'text/csv', buffer: Buffer.from('code,description\n845290,Sewing machine parts\n5208.32,Woven cotton, dyed\n') })]);
+    await result(adm, 'Imported 2 HS codes');
+
     step('admin: read-only pages');
-    for (const p of ['/admin/audit?q=award', '/dev/mail', '/insights?weeks=4', '/ops/pools', '/ops/tenders?status=awarded']) await adm.goto(BASE + p);
+    for (const p of ['/admin/audit?q=award', '/dev/mail', '/insights?weeks=4', '/ops/pools', '/ops/tenders?status=awarded', '/ops/payables']) await adm.goto(BASE + p);
 
     // ---------------- Viewer ----------------
     step('viewer: insights');

@@ -197,6 +197,12 @@ type Settings struct {
 	LicenceCategories []domain.Category
 	MinBidHours       int
 	ReminderHours     int
+	HandlingCents     int64   // flat fee per booking
+	OwnBoxThreshold   float64 // % fill needed to run an own box
+	USDLKR            float64 // exchange rate for LKR invoices
+	DecisionHours     int     // plan locks this long before the CFS cut-off
+	BidCloseHours     int     // bids close this long before the CFS cut-off
+	HSCheck           string  // off, warn or block against the HS list
 }
 
 var settingDefaults = map[string]string{
@@ -208,11 +214,23 @@ var settingDefaults = map[string]string{
 	"licence_categories": "fabric,dyes",
 	"min_bid_hours":      "12",
 	"reminder_hours":     "24",
+	"handling_fee":       "0",
+	"own_box_threshold":  "65",
+	"usd_lkr_rate":       "300",
+	"decision_hours":     "48",
+	"bid_close_hours":    "24",
+	"hs_check":           "warn",
 }
 
 // SettingKeys lists the editable settings with their labels and help.
 var SettingKeys = []struct{ Key, Label, Help string }{
 	{"fee_per_wm", "Eimsky fee (USD per W/M)", "Added to each shipper's share of the winning bid."},
+	{"handling_fee", "Handling fee (USD per booking)", "A flat fee added to every booking's invoice. 0 turns it off."},
+	{"own_box_threshold", "Own-box threshold (% fill)", "Below this fill at decision time, co-load or roll to the next sailing is recommended."},
+	{"decision_hours", "Plan decision (hours before CFS cut-off)", "New sailings lock their plan this long before the cut-off."},
+	{"bid_close_hours", "Bids close (hours before CFS cut-off)", "New sailings close forwarder bidding this long before the cut-off."},
+	{"usd_lkr_rate", "USD to LKR rate", "Used on invoices for factories billed in LKR."},
+	{"hs_check", "HS code check", "off, warn or block: what happens when a code isn't in Eimsky's HS list."},
 	{"stowage", "Stowage factor", "Share of a box's internal volume that can be sold, e.g. 0.85."},
 	{"hold_minutes", "Booking hold (minutes)", "How long space is held while a shipper confirms."},
 	{"min_bid_hours", "Minimum bidding window (hours)", "If a sailing's bid close is sooner, tenders stay open this long."},
@@ -258,6 +276,15 @@ func (a *App) Settings(ctx context.Context) Settings {
 		FeePerWM: f("fee_per_wm"), Stowage: f("stowage"), HoldMinutes: int(f("hold_minutes")), KAnon: int(f("k_anon")),
 		DocRetentionDays: int(f("doc_retention_days")), MinBidHours: int(f("min_bid_hours")), ReminderHours: int(f("reminder_hours")),
 	}
+	s.HandlingCents = domain.Cents(f("handling_fee"))
+	s.OwnBoxThreshold = f("own_box_threshold")
+	s.USDLKR = f("usd_lkr_rate")
+	s.DecisionHours = int(f("decision_hours"))
+	s.BidCloseHours = int(f("bid_close_hours"))
+	s.HSCheck = m["hs_check"]
+	if s.HSCheck != "off" && s.HSCheck != "block" {
+		s.HSCheck = "warn"
+	}
 	for _, c := range strings.Split(m["licence_categories"], ",") {
 		c := domain.Category(strings.TrimSpace(c))
 		if c.Valid() {
@@ -274,7 +301,11 @@ func (a *App) SaveSettings(ctx context.Context, actor *User, vals map[string]str
 			return Errf("unknown setting %s", k)
 		}
 		v = strings.TrimSpace(v)
-		if k != "licence_categories" {
+		if k == "hs_check" {
+			if v != "off" && v != "warn" && v != "block" {
+				return Errf("HS code check must be off, warn or block")
+			}
+		} else if k != "licence_categories" {
 			n, err := strconv.ParseFloat(v, 64)
 			if err != nil || n < 0 {
 				return Errf("%s must be a positive number", k)

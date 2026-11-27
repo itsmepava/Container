@@ -56,6 +56,7 @@ func (a *App) Tick(ctx context.Context) {
 	run("close_tenders", a.CloseDueTenders)
 	run("doc_reminders", a.SendDocReminders)
 	run("tender_reminders", a.SendTenderReminders)
+	run("award_doc_reminders", a.SendAwardDocReminders)
 	run("issue_invoices", a.IssueDueInvoices)
 	run("purge_documents", a.PurgeDocuments)
 	run("deliver_email", a.DeliverEmail)
@@ -96,6 +97,16 @@ func (a *App) SendDocReminders(ctx context.Context) (int, error) {
 				labels = append(labels, "import licence")
 			}
 		}
+		if fresh, _ := a.Mark(ctx, a.DB, fmt.Sprintf("docremind-ops:%d", b.SailingID)); fresh {
+			var count int
+			for _, x := range bs {
+				if x.SailingID == b.SailingID && len(missing[x.ID]) > 0 {
+					count++
+				}
+			}
+			_ = a.NotifyStaff(ctx, a.DB, Note{Title: fmt.Sprintf("%d shipper(s) missing documents for %s %s", count, s.Lane.Short(), s.Label()),
+				Body: "The CFS cut-off is " + fmtTime(s.CFSCutoff) + ". They've been emailed.", Link: fmt.Sprintf("/ops/sailings/%d/plan", s.ID)})
+		}
 		_ = a.NotifyCompany(ctx, a.DB, b.CompanyID, Note{Title: "Documents due for " + b.ref(),
 			Body: fmt.Sprintf("Please upload the %s before the CFS cut-off, %s (%s left).", strings.Join(labels, " and "), fmtTime(s.CFSCutoff), domain.Until(a.Now(), s.CFSCutoff)),
 			Link: fmt.Sprintf("/f/bookings/%d", b.ID), Email: true})
@@ -106,9 +117,9 @@ func (a *App) SendDocReminders(ctx context.Context) (int, error) {
 
 func (b *Booking) ref() string { return b.Ref }
 
-// SendTenderReminders nudges invited forwarders who haven't bid, two hours before close.
+// SendTenderReminders nudges invited forwarders who haven't bid, six hours before close.
 func (a *App) SendTenderReminders(ctx context.Context) (int, error) {
-	rows, err := a.DB.Query(ctx, `SELECT t.id, t.ref, t.closes_at FROM tenders t WHERE t.status='open' AND t.closes_at > $1 AND t.closes_at <= $2`, a.Now(), a.Now().Add(2*time.Hour))
+	rows, err := a.DB.Query(ctx, `SELECT t.id, t.ref, t.closes_at FROM tenders t WHERE t.status='open' AND t.closes_at > $1 AND t.closes_at <= $2`, a.Now(), a.Now().Add(6*time.Hour))
 	if err != nil {
 		return 0, err
 	}
@@ -309,4 +320,54 @@ func (a *App) DeliverPush(ctx context.Context) (int, error) {
 	}
 	_, _ = a.DB.Exec(ctx, `UPDATE push_outbox SET sent_at=now(), attempts=attempts+1 WHERE id = ANY($1)`, ids)
 	return len(msgs), nil
+}
+
+// SendAwardDocReminders chases winning forwarders whose booking confirmation or
+// B/L copy is still missing 24 hours after award, and tells ops.
+func (a *App) SendAwardDocReminders(ctx context.Context) (int, error) {
+	rows, err := a.DB.Query(ctx, `SELECT t.id, t.ref, w.company_id,
+		  EXISTS(SELECT 1 FROM documents WHERE owner_kind='tender' AND owner_id=t.id AND kind='booking_confirmation'),
+		  EXISTS(SELECT 1 FROM documents WHERE owner_kind='tender' AND owner_id=t.id AND kind='bl_copy')
+		FROM tenders t JOIN bids w ON w.id=t.awarded_bid_id
+		WHERE t.status='awarded' AND t.awarded_at <= $1 AND t.awarded_at > $2`, a.Now().Add(-24*time.Hour), a.Now().Add(-30*24*time.Hour))
+	if err != nil {
+		return 0, err
+	}
+	type item struct {
+		id       int64
+		ref      string
+		company  int64
+		conf, bl bool
+	}
+	var items []item
+	for rows.Next() {
+		var it item
+		if err := rows.Scan(&it.id, &it.ref, &it.company, &it.conf, &it.bl); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		if !it.conf || !it.bl {
+			items = append(items, it)
+		}
+	}
+	rows.Close()
+	n := 0
+	for _, it := range items {
+		fresh, err := a.Mark(ctx, a.DB, fmt.Sprintf("awarddocs:%d", it.id))
+		if err != nil || !fresh {
+			continue
+		}
+		var missing []string
+		if !it.conf {
+			missing = append(missing, "booking confirmation")
+		}
+		if !it.bl {
+			missing = append(missing, "B/L copy")
+		}
+		what := strings.Join(missing, " and ")
+		_ = a.NotifyCompany(ctx, a.DB, it.company, Note{Title: "Overdue: " + what + " for " + it.ref, Body: "Upload it in the Eimsky app so the shippers can be invoiced.", Push: true, Data: map[string]any{"tenderId": it.id, "screen": "award"}})
+		_ = a.NotifyStaff(ctx, a.DB, Note{Title: it.ref + ": forwarder's " + what + " overdue", Body: "More than 24 hours since award.", Link: fmt.Sprintf("/ops/tenders/%d", it.id)})
+		n++
+	}
+	return n, nil
 }

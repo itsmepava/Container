@@ -183,7 +183,7 @@ func TestPagesRender(t *testing.T) {
 	ops.login("ops@eimsky.test")
 	for _, p := range []string{"/ops/pools", "/ops/tenders", "/ops/tenders?status=closed", "/ops/bookings", "/ops/bookings?status=unplaced&q=lotus", "/ops/invoices",
 		"/admin/lanes", "/admin/lanes/new", "/admin/lanes/1", "/admin/sailings/new", "/admin/companies", "/admin/companies?status=pending", "/admin/users", "/admin/users?q=silva",
-		"/admin/settings", "/admin/audit", "/insights", "/insights?weeks=26", "/dev/mail", "/account", "/notifications"} {
+		"/admin/settings", "/admin/audit", "/insights", "/insights?weeks=26", "/dev/mail", "/account", "/notifications", "/ops/payables", "/ops/payables?status=due"} {
 		ops.get(p, 200)
 	}
 	ops.get("/f/book", 404)

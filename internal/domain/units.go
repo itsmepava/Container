@@ -18,14 +18,15 @@ const (
 	CatTrims     Category = "trims"
 	CatPackaging Category = "packaging"
 	CatDyes      Category = "dyes"
+	CatMachinery Category = "machinery"
 	CatDG        Category = "dg"
 )
 
 // Categories lists every category in display order.
-var Categories = []Category{CatFabric, CatTrims, CatPackaging, CatDyes, CatDG}
+var Categories = []Category{CatFabric, CatTrims, CatPackaging, CatDyes, CatMachinery, CatDG}
 
 // BookableCategories are the categories a shipper may book in phase 1.
-var BookableCategories = []Category{CatFabric, CatTrims, CatPackaging, CatDyes}
+var BookableCategories = []Category{CatFabric, CatTrims, CatPackaging, CatDyes, CatMachinery}
 
 func (c Category) Label() string {
 	switch c {
@@ -37,6 +38,8 @@ func (c Category) Label() string {
 		return "Packaging"
 	case CatDyes:
 		return "Dyes and chemicals (non-DG)"
+	case CatMachinery:
+		return "Machinery parts"
 	case CatDG:
 		return "Dangerous goods (DG)"
 	}
@@ -54,6 +57,8 @@ func (c Category) Short() string {
 		return "packaging"
 	case CatDyes:
 		return "dyes"
+	case CatMachinery:
+		return "machinery"
 	case CatDG:
 		return "DG"
 	}
@@ -203,14 +208,15 @@ func NormalizeHSCode(code string) string {
 	return code
 }
 
-// ValidateHSCode checks an HS code is at least 6 digits in a recognised format.
+// ValidateHSCode checks an HS code has 6 to 8 digits in a recognised format.
 func ValidateHSCode(code string) error {
 	c := NormalizeHSCode(code)
 	if c == "" {
 		return fmt.Errorf("enter an HS code")
 	}
-	if !hsRe.MatchString(c) || len(strings.ReplaceAll(c, ".", "")) < 6 {
-		return fmt.Errorf("HS code %q should look like 6006.32 (at least 6 digits)", code)
+	digits := len(strings.ReplaceAll(c, ".", ""))
+	if !hsRe.MatchString(c) || digits < 6 || digits > 8 {
+		return fmt.Errorf("HS code %q should have 6 to 8 digits, like 6006.32", code)
 	}
 	ch := c[:2]
 	if ch == "00" || ch > "97" {

@@ -176,6 +176,12 @@ func TestForwarderFlow(t *testing.T) {
 		t.Fatal("tampered link accepted")
 	}
 	w.do("POST", "/tenders/"+itoa(closed[0].ID)+"/confirmation", upload("booking_confirmation"), 200, nil)
+	w.do("POST", "/tenders/"+itoa(closed[0].ID)+"/documents", upload("bl_copy"), 200, nil)
+	var aw2 map[string]any
+	w.do("GET", "/tenders/"+itoa(closed[0].ID)+"/award", nil, 200, &aw2)
+	if aw2["blCopy"] == nil || aw2["confirmation"] == nil {
+		t.Fatalf("award docs %v", aw2)
+	}
 	c.do("POST", "/tenders/"+itoa(closed[0].ID)+"/confirmation", upload("booking_confirmation"), 400, nil)
 	var won []tenderJSON
 	w.do("GET", "/tenders?scope=awarded", nil, 200, &won)

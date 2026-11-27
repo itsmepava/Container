@@ -9,6 +9,7 @@ import (
 
 	"github.com/itsmepava/container/internal/domain"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 type Tender struct {
@@ -168,18 +169,19 @@ type BillRow struct {
 }
 
 type TenderView struct {
-	Tender      *Tender
-	Bids        []BidRow
-	AutoPick    *BidRow
-	Selected    *BidRow
-	Bills       []BillRow
-	Summary     domain.BillSummary
-	FeePerWM    float64
-	Invited     []string
-	Audit       []AuditEntry
-	CheaperNote string
-	OverCap     bool
-	ExtraCents  int64 // selected vs auto pick
+	Tender        *Tender
+	Bids          []BidRow
+	AutoPick      *BidRow
+	Selected      *BidRow
+	Bills         []BillRow
+	Summary       domain.BillSummary
+	FeePerWM      float64
+	HandlingCents int64
+	Invited       []string
+	Audit         []AuditEntry
+	CheaperNote   string
+	OverCap       bool
+	ExtraCents    int64 // selected vs auto pick
 }
 
 // TenderView builds the ops tender screen; selectedBid previews another bid.
@@ -192,7 +194,8 @@ func (a *App) TenderView(ctx context.Context, tenderID, selectedBid int64) (*Ten
 	if err != nil {
 		return nil, err
 	}
-	v := &TenderView{Tender: t, FeePerWM: a.Settings(ctx).FeePerWM}
+	st := a.Settings(ctx)
+	v := &TenderView{Tender: t, FeePerWM: st.FeePerWM, HandlingCents: st.HandlingCents}
 	var evals []domain.BidEval
 	for _, b := range bs {
 		evals = append(evals, b.eval())
@@ -297,12 +300,13 @@ func (a *App) billPreview(ctx context.Context, q Querier, t *Tender, bidCents in
 	for _, b := range bs {
 		in = append(in, domain.BillInput{BookingID: b.ID, WM: b.WM, CapCents: b.CapCents})
 	}
-	bills := domain.Bill(bidCents, a.Settings(ctx).FeePerWM, in)
+	st := a.Settings(ctx)
+	bills := domain.Bill(bidCents, st.FeePerWM, st.HandlingCents, in)
 	var rows []BillRow
 	for i, b := range bills {
 		r := BillRow{ShipperBill: b, Ref: bs[i].Ref, CompanyName: bs[i].CompanyName, CBM: bs[i].CBM}
 		if b.WM > 0 {
-			r.AllInPerWM = float64(b.FreightCents+b.FeeCents) / 100 / b.WM
+			r.AllInPerWM = float64(b.FreightCents+b.FeeCents+b.HandlingCents) / 100 / b.WM
 		}
 		rows = append(rows, r)
 	}
@@ -396,8 +400,8 @@ func (a *App) Award(ctx context.Context, actor *User, tenderID, bidID int64, rea
 			}
 		}
 		for _, b := range bills {
-			if _, err := tx.Exec(ctx, `UPDATE bookings SET freight_cents=$2, fee_cents=$3, total_cents=$4, cap_applied=$5, priced_at=now() WHERE id=$1`,
-				b.BookingID, b.FreightCents, b.FeeCents, b.TotalCents, b.CapApplied); err != nil {
+			if _, err := tx.Exec(ctx, `UPDATE bookings SET freight_cents=$2, fee_cents=$3, handling_cents=$6, total_cents=$4, cap_applied=$5, priced_at=now() WHERE id=$1`,
+				b.BookingID, b.FreightCents, b.FeeCents, b.TotalCents, b.CapApplied, b.HandlingCents); err != nil {
 				return err
 			}
 		}
@@ -739,6 +743,7 @@ type AwardDetail struct {
 	Tender       *ForwarderTender
 	Shippers     []AwardShipper
 	Confirmation *Document
+	BLCopy       *Document
 	OriginCFS    string
 }
 
@@ -771,8 +776,11 @@ func (a *App) AwardDetailFor(ctx context.Context, u *User, tenderID int64) (*Awa
 		return nil, err
 	}
 	for _, x := range tds {
-		if x.Kind == "booking_confirmation" {
+		switch x.Kind {
+		case "booking_confirmation":
 			d.Confirmation = x
+		case "bl_copy":
+			d.BLCopy = x
 		}
 	}
 	return d, nil
@@ -796,4 +804,170 @@ func (a *App) CloseTenderNow(ctx context.Context, actor *User, tenderID int64) e
 	_ = a.Audit(ctx, a.DB, actor, "tender.close_now", "tender", tenderID, "Bidding closed early by "+actor.Name, nil)
 	_, err = a.CloseDueTenders(ctx)
 	return err
+}
+
+// FallbackOffer describes the pre-agreed rate available for a tender nobody bid on.
+type FallbackOffer struct {
+	CompanyID   int64
+	CompanyName string
+	AmountCents int64
+}
+
+// Fallback returns the lane's pre-agreed forwarder and rate for this tender's box, if set.
+func (a *App) Fallback(ctx context.Context, t *Tender) *FallbackOffer {
+	l := t.Sailing.Lane
+	rate := l.Fallback[t.Container.BoxCode]
+	if l.FallbackID == 0 || rate <= 0 {
+		return nil
+	}
+	return &FallbackOffer{CompanyID: l.FallbackID, CompanyName: l.FallbackName, AmountCents: domain.Cents(rate)}
+}
+
+// AwardFallback awards a closed tender that got no compliant bid to the lane's
+// pre-agreed forwarder at the pre-agreed rate.
+func (a *App) AwardFallback(ctx context.Context, actor *User, tenderID int64) error {
+	t, err := a.loadTender(ctx, a.DB, tenderID)
+	if err != nil {
+		return err
+	}
+	if t.Status != "closed" {
+		return Errf("Use the fallback rate only after bidding closes with no usable bid.")
+	}
+	fb := a.Fallback(ctx, t)
+	if fb == nil {
+		return Errf("This lane has no pre-agreed forwarder and rate for a %s. Set them in Lanes and sailings.", t.Container.BoxCode)
+	}
+	var uid int64
+	if err := a.DB.QueryRow(ctx, `SELECT id FROM users WHERE company_id=$1 AND active ORDER BY id LIMIT 1`, fb.CompanyID).Scan(&uid); err != nil {
+		return Errf("%s has no active user to award to.", fb.CompanyName)
+	}
+	var bidID int64
+	err = a.DB.QueryRow(ctx, `INSERT INTO bids(tender_id,company_id,user_id,amount_cents,vessel_id,inc_ocean,inc_origin,inc_destination,inc_destuff,note)
+		VALUES ($1,$2,$3,$4,$5,true,true,true,true,'Pre-agreed fallback rate')
+		ON CONFLICT (tender_id,company_id) DO UPDATE SET amount_cents=EXCLUDED.amount_cents, vessel_id=EXCLUDED.vessel_id, inc_ocean=true, inc_origin=true, inc_destination=true, inc_destuff=true, note=EXCLUDED.note, updated_at=now()
+		RETURNING id`, tenderID, fb.CompanyID, uid, fb.AmountCents, t.VesselID).Scan(&bidID)
+	if err != nil {
+		return err
+	}
+	if err := a.Award(ctx, actor, tenderID, bidID, "No usable bids: pre-agreed fallback rate"); err != nil {
+		return err
+	}
+	_, err = a.DB.Exec(ctx, `UPDATE tenders SET award_kind='fallback' WHERE id=$1`, tenderID)
+	return err
+}
+
+// ColoadTender gives up on a tender and sends its lots to the co-load partner.
+func (a *App) ColoadTender(ctx context.Context, actor *User, tenderID int64) error {
+	return a.Tx(ctx, func(tx pgx.Tx) error {
+		t, err := a.loadTender(ctx, tx, tenderID)
+		if err != nil {
+			return err
+		}
+		if t.Status != "closed" && t.Status != "open" {
+			return Errf("This tender is already %s.", strings.ToLower(t.StatusLabel()))
+		}
+		bs, err := a.queryBookings(ctx, tx, `b.container_id=$1 AND b.status='booked' AND b.mode='pool'`, t.ContainerID)
+		if err != nil {
+			return err
+		}
+		for _, b := range bs {
+			if err := a.priceCoload(ctx, tx, b, t.Sailing); err != nil {
+				return err
+			}
+			if err := a.NotifyCompany(ctx, tx, b.CompanyID, Note{Title: "Your cost for " + b.Ref + " is set",
+				Body: "No forwarder bid on your container, so your lot goes with our co-load partner on the same sailing. Your cost cap still applies.",
+				Link: fmt.Sprintf("/f/bookings/%d", b.ID), Email: true}); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec(ctx, `UPDATE tenders SET status='cancelled', award_kind='coload', awarded_by=$2, awarded_at=now() WHERE id=$1`, tenderID, actor.ID); err != nil {
+			return err
+		}
+		if _, err := tx.Exec(ctx, `UPDATE containers SET status='cancelled' WHERE id=$1`, t.ContainerID); err != nil {
+			return err
+		}
+		var open int
+		_ = tx.QueryRow(ctx, `SELECT count(*) FROM tenders t JOIN containers c ON c.id=t.container_id WHERE c.sailing_id=$1 AND t.status IN ('open','closed')`, t.Sailing.ID).Scan(&open)
+		if open == 0 {
+			if _, err := tx.Exec(ctx, `UPDATE sailings SET status=CASE WHEN EXISTS (SELECT 1 FROM tenders t JOIN containers c ON c.id=t.container_id WHERE c.sailing_id=$1 AND t.status='awarded') THEN 'awarded' ELSE 'coload' END WHERE id=$1`, t.Sailing.ID); err != nil {
+				return err
+			}
+		}
+		return a.Audit(ctx, tx, actor, "tender.coload", "tender", tenderID, fmt.Sprintf("%s: no usable bids, %d lot(s) sent to the co-load partner", t.Ref, len(bs)), nil)
+	})
+}
+
+// ---------- Payables ----------
+
+// Payable is what Eimsky owes the winning forwarder for one container.
+type Payable struct {
+	TenderID      int64
+	Ref           string
+	Forwarder     string
+	Lane          string
+	Week          int
+	BoxCode       string
+	AmountCents   int64
+	AwardedAt     *time.Time
+	Confirmation  bool
+	BLCopy        bool
+	PaidAt        *time.Time
+	PaidRef       string
+	InvoicedCents int64
+}
+
+// Payables lists awarded tenders and what Eimsky owes each forwarder.
+func (a *App) Payables(ctx context.Context, status string) ([]Payable, error) {
+	rows, err := a.DB.Query(ctx, `
+		SELECT t.id, t.ref, c.name, o.name || ' → ' || d.name, s.week, ct.box_code, w.amount_cents, t.awarded_at,
+		  EXISTS(SELECT 1 FROM documents WHERE owner_kind='tender' AND owner_id=t.id AND kind='booking_confirmation'),
+		  EXISTS(SELECT 1 FROM documents WHERE owner_kind='tender' AND owner_id=t.id AND kind='bl_copy'),
+		  t.payout_paid_at, t.payout_ref,
+		  COALESCE((SELECT sum(i.total_cents) FROM invoices i JOIN bookings b ON b.id=i.booking_id WHERE b.container_id=t.container_id AND i.status<>'void'),0)
+		FROM tenders t JOIN bids w ON w.id=t.awarded_bid_id JOIN companies c ON c.id=w.company_id
+		JOIN containers ct ON ct.id=t.container_id JOIN sailings s ON s.id=ct.sailing_id JOIN lanes l ON l.id=s.lane_id
+		JOIN ports o ON o.code=l.origin JOIN ports d ON d.code=l.dest
+		WHERE t.status='awarded' AND ($1='' OR ($1='due' AND t.payout_paid_at IS NULL) OR ($1='paid' AND t.payout_paid_at IS NOT NULL))
+		ORDER BY t.payout_paid_at IS NOT NULL, t.awarded_at DESC`, status)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Payable
+	for rows.Next() {
+		var p Payable
+		if err := rows.Scan(&p.TenderID, &p.Ref, &p.Forwarder, &p.Lane, &p.Week, &p.BoxCode, &p.AmountCents, &p.AwardedAt, &p.Confirmation, &p.BLCopy, &p.PaidAt, &p.PaidRef, &p.InvoicedCents); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// MarkPayout records (or undoes) Eimsky's payment to the winning forwarder.
+func (a *App) MarkPayout(ctx context.Context, actor *User, tenderID int64, paid bool, ref string) error {
+	ref = strings.TrimSpace(ref)
+	return a.Tx(ctx, func(tx pgx.Tx) error {
+		var tag pgconn.CommandTag
+		var err error
+		if paid {
+			tag, err = tx.Exec(ctx, `UPDATE tenders SET payout_paid_at=now(), payout_ref=$2 WHERE id=$1 AND status='awarded'`, tenderID, ref)
+		} else {
+			tag, err = tx.Exec(ctx, `UPDATE tenders SET payout_paid_at=NULL, payout_ref='' WHERE id=$1 AND status='awarded'`, tenderID)
+		}
+		if err != nil {
+			return err
+		}
+		if tag.RowsAffected() == 0 {
+			return ErrNotFound
+		}
+		sum := "Forwarder payment recorded"
+		if ref != "" {
+			sum += " · ref " + ref
+		}
+		if !paid {
+			sum = "Forwarder payment undone"
+		}
+		return a.Audit(ctx, tx, actor, "payout", "tender", tenderID, sum, nil)
+	})
 }

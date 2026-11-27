@@ -69,6 +69,10 @@ func GradeAllows(g Grade, c Category) error {
 		if g == GradeA {
 			return fmt.Errorf("grade A boxes stay clean: no dyes or chemicals")
 		}
+	case CatMachinery:
+		if g == GradeA {
+			return fmt.Errorf("grade A boxes stay clean: no machinery parts")
+		}
 	}
 	return nil
 }

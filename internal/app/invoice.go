@@ -12,21 +12,25 @@ import (
 )
 
 type Invoice struct {
-	ID           int64
-	Number       string
-	BookingID    int64
-	CompanyID    int64
-	CompanyName  string
-	BookingRef   string
-	FreightCents int64
-	FeeCents     int64
-	TotalCents   int64
-	Status       string
-	IssuedAt     time.Time
-	PaidAt       *time.Time
+	ID            int64
+	Number        string
+	BookingID     int64
+	CompanyID     int64
+	CompanyName   string
+	BookingRef    string
+	FreightCents  int64
+	FeeCents      int64
+	HandlingCents int64
+	TotalCents    int64
+	Currency      string  // USD or LKR
+	FxRate        float64 // LKR per USD when Currency is LKR
+	TotalLocal    int64   // total in the invoice currency, cents
+	Status        string
+	IssuedAt      time.Time
+	PaidAt        *time.Time
 }
 
-const invoiceCols = `i.id,i.number,i.booking_id,i.company_id,c.name,b.ref,i.freight_cents,i.fee_cents,i.total_cents,i.status,i.issued_at,i.paid_at`
+const invoiceCols = `i.id,i.number,i.booking_id,i.company_id,c.name,b.ref,i.freight_cents,i.fee_cents,i.handling_cents,i.total_cents,i.currency,i.fx_rate,COALESCE(i.total_local_cents,i.total_cents),i.status,i.issued_at,i.paid_at`
 
 func (a *App) queryInvoices(ctx context.Context, where string, args ...any) ([]*Invoice, error) {
 	rows, err := a.DB.Query(ctx, `SELECT `+invoiceCols+` FROM invoices i JOIN companies c ON c.id=i.company_id JOIN bookings b ON b.id=i.booking_id WHERE `+where, args...)
@@ -37,7 +41,7 @@ func (a *App) queryInvoices(ctx context.Context, where string, args ...any) ([]*
 	var out []*Invoice
 	for rows.Next() {
 		v := &Invoice{}
-		if err := rows.Scan(&v.ID, &v.Number, &v.BookingID, &v.CompanyID, &v.CompanyName, &v.BookingRef, &v.FreightCents, &v.FeeCents, &v.TotalCents, &v.Status, &v.IssuedAt, &v.PaidAt); err != nil {
+		if err := rows.Scan(&v.ID, &v.Number, &v.BookingID, &v.CompanyID, &v.CompanyName, &v.BookingRef, &v.FreightCents, &v.FeeCents, &v.HandlingCents, &v.TotalCents, &v.Currency, &v.FxRate, &v.TotalLocal, &v.Status, &v.IssuedAt, &v.PaidAt); err != nil {
 			return nil, err
 		}
 		out = append(out, v)
@@ -108,9 +112,19 @@ func (a *App) IssueDueInvoices(ctx context.Context) (int, error) {
 				return err
 			}
 			num := fmt.Sprintf("INV-%d-%06d", a.Now().In(domain.Colombo).Year(), seq)
+			var handling int64
+			if b.HandlingCents != nil {
+				handling = *b.HandlingCents
+			}
+			currency, rate, local := "USD", 1.0, *b.TotalCents
+			_ = tx.QueryRow(ctx, `SELECT invoice_currency FROM companies WHERE id=$1`, b.CompanyID).Scan(&currency)
+			if currency == "LKR" {
+				rate = a.Settings(ctx).USDLKR
+				local = int64(float64(*b.TotalCents)*rate + 0.5)
+			}
 			var id int64
-			if err := tx.QueryRow(ctx, `INSERT INTO invoices(number,booking_id,company_id,freight_cents,fee_cents,total_cents) VALUES ($1,$2,$3,$4,$5,$6)
-				ON CONFLICT (booking_id) DO NOTHING RETURNING id`, num, b.ID, b.CompanyID, *b.FreightCents, *b.FeeCents, *b.TotalCents).Scan(&id); err != nil {
+			if err := tx.QueryRow(ctx, `INSERT INTO invoices(number,booking_id,company_id,freight_cents,fee_cents,handling_cents,total_cents,currency,fx_rate,total_local_cents) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+				ON CONFLICT (booking_id) DO NOTHING RETURNING id`, num, b.ID, b.CompanyID, *b.FreightCents, *b.FeeCents, handling, *b.TotalCents, currency, rate, local).Scan(&id); err != nil {
 				if err == pgx.ErrNoRows {
 					return nil
 				}
@@ -120,7 +134,11 @@ func (a *App) IssueDueInvoices(ctx context.Context) (int, error) {
 				return err
 			}
 			n++
-			return a.NotifyCompany(ctx, tx, b.CompanyID, Note{Title: "Invoice " + num + " for " + b.Ref, Body: "USD " + domain.Money(*b.TotalCents) + ". Download it from My bookings.", Link: fmt.Sprintf("/f/bookings/%d", b.ID), Email: true})
+			amount := "USD " + domain.Money(*b.TotalCents)
+			if currency == "LKR" {
+				amount = "LKR " + domain.Money(local) + " (USD " + domain.Money(*b.TotalCents) + ")"
+			}
+			return a.NotifyCompany(ctx, tx, b.CompanyID, Note{Title: "Invoice " + num + " for " + b.Ref, Body: amount + ". Download it from My bookings.", Link: fmt.Sprintf("/f/bookings/%d", b.ID), Email: true})
 		})
 		if err != nil {
 			return n, err
@@ -216,12 +234,19 @@ func (a *App) InvoicePDF(ctx context.Context, u *User, inv *Invoice) ([]byte, er
 	}
 	line(freightLabel, inv.FreightCents)
 	line(fmt.Sprintf("Eimsky fee, %.2f W/M", b.WM), inv.FeeCents)
-	if adj := inv.TotalCents - inv.FreightCents - inv.FeeCents; adj != 0 {
+	if inv.HandlingCents > 0 {
+		line("Handling fee, per booking", inv.HandlingCents)
+	}
+	if adj := inv.TotalCents - inv.FreightCents - inv.FeeCents - inv.HandlingCents; adj != 0 {
 		line("Held at booking estimate", adj)
 	}
 	p.SetFont("Helvetica", "B", 12)
-	p.CellFormat(124, 10, "Total due", "", 0, "L", false, 0, "")
+	p.CellFormat(124, 10, "Total (USD)", "", 0, "L", false, 0, "")
 	p.CellFormat(0, 10, "USD "+domain.Money(inv.TotalCents), "", 1, "R", false, 0, "")
+	if inv.Currency == "LKR" {
+		p.CellFormat(124, 10, tr(fmt.Sprintf("Total due in LKR, at %.2f LKR per USD", inv.FxRate)), "", 0, "L", false, 0, "")
+		p.CellFormat(0, 10, "LKR "+domain.Money(inv.TotalLocal), "", 1, "R", false, 0, "")
+	}
 	p.Ln(6)
 	p.SetFont("Helvetica", "", 9)
 	muted()

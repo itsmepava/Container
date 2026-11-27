@@ -68,7 +68,7 @@ func TestHSCode(t *testing.T) {
 			t.Fatalf("%s rejected", ok)
 		}
 	}
-	for _, bad := range []string{"", "60", "abc123", "9906.11", "0012.34"} {
+	for _, bad := range []string{"", "60", "abc123", "9906.11", "0012.34", "6006.32.11.22", "6006321122"} {
 		if ValidateHSCode(bad) == nil {
 			t.Fatalf("%q accepted", bad)
 		}
@@ -198,7 +198,7 @@ func TestBillWorkedExample(t *testing.T) {
 	for i, w := range ws {
 		in = append(in, BillInput{BookingID: int64(i + 1), WM: w, CapCents: Cents(50 * w)})
 	}
-	bills := Bill(235000, 8, in)
+	bills := Bill(235000, 8, 0, in)
 	a := bills[0]
 	if a.FreightCents != 26741 || a.FeeCents != 5280 || a.TotalCents != 32021 || a.CapApplied {
 		t.Fatalf("%+v", a)
@@ -208,16 +208,16 @@ func TestBillWorkedExample(t *testing.T) {
 		t.Fatalf("%+v", sum)
 	}
 	// Forwarder B override at 2,410: 49.55 all-in, still under the cap.
-	sumB := Summarize(241000, Bill(241000, 8, in))
+	sumB := Summarize(241000, Bill(241000, 8, 0, in))
 	if Round(sumB.FreightPerWM, 2) != 41.55 || sumB.AnyOverCap {
 		t.Fatalf("%+v", sumB)
 	}
 	// A bid of 2,500 pushes shippers over the USD 50 cap.
-	over := Bill(250000, 8, in)
+	over := Bill(250000, 8, 0, in)
 	if !over[0].CapApplied || over[0].TotalCents != 33000 {
 		t.Fatalf("%+v", over[0])
 	}
-	c := CoLoadBill(1, 8.2, 55, 8, Cents(50*8.2))
+	c := CoLoadBill(1, 8.2, 55, 8, 0, Cents(50*8.2))
 	if !c.CapApplied || c.TotalCents != 41000 {
 		t.Fatalf("%+v", c)
 	}
@@ -266,5 +266,22 @@ func TestFormatting(t *testing.T) {
 	now := time.Date(2026, 11, 25, 17, 0, 0, 0, Colombo)
 	if Until(now, now.Add(5*24*time.Hour)) != "5 d" || Until(now, now.Add(30*time.Hour)) != "1 d 6 h" || Until(now, now.Add(-time.Hour)) != "passed" {
 		t.Fatal(Until(now, now.Add(30*time.Hour)))
+	}
+}
+
+func TestHandlingFeeAndMachinery(t *testing.T) {
+	in := []BillInput{{BookingID: 1, WM: 6.6}, {BookingID: 2, WM: 3.4}}
+	bills := Bill(100000, 8, 1500, in)
+	if bills[0].HandlingCents != 1500 || bills[0].TotalCents != bills[0].FreightCents+bills[0].FeeCents+1500 {
+		t.Fatalf("%+v", bills[0])
+	}
+	if s := Summarize(100000, bills); s.InvoicedCents != 100000+Cents(8*10)+3000 {
+		t.Fatalf("%+v", s)
+	}
+	if GradeAllows(GradeA, CatMachinery) == nil || GradeAllows(GradeB, CatMachinery) != nil {
+		t.Fatal("machinery grade rule")
+	}
+	if !CatMachinery.Valid() || CatMachinery.Label() != "Machinery parts" {
+		t.Fatal("machinery category")
 	}
 }

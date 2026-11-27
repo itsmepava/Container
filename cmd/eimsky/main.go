@@ -4,6 +4,7 @@
 //	eimsky migrate          apply database migrations
 //	eimsky seed [--reset]   load the demo data (--reset wipes the database first)
 //	eimsky create-admin EMAIL PASSWORD   create the first admin on an empty database
+//	eimsky demo [--port 8080] [--reset]  run everything with a private built-in database (for testing)
 package main
 
 import (
@@ -16,6 +17,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"syscall"
 	"time"
 
@@ -44,6 +46,9 @@ func run(cmd string, args []string, log *slog.Logger) error {
 	cfg := config.Load()
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+	if cmd == "demo" {
+		return runDemo(ctx, cfg, args, log)
+	}
 
 	pool, err := db.Open(ctx, cfg.DatabaseURL)
 	if err != nil {
@@ -98,28 +103,36 @@ func run(cmd string, args []string, log *slog.Logger) error {
 		if err := a.SeedReference(ctx); err != nil {
 			return err
 		}
-		srv, err := web.New(a)
-		if err != nil {
-			return err
-		}
-		srv.API = api.New(a).Handler()
-		every := 30 * time.Second
-		if d, err := time.ParseDuration(os.Getenv("JOBS_INTERVAL")); err == nil && d > 0 {
-			every = d
-		}
-		go a.RunJobs(ctx, every)
-		hs := &http.Server{Addr: cfg.Addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 60 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 120 * time.Second}
-		go func() {
-			<-ctx.Done()
-			sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-			defer cancel()
-			_ = hs.Shutdown(sctx)
-		}()
-		log.Info("Eimsky is running", "url", cfg.BaseURL, "addr", cfg.Addr, "dev_mode", cfg.DevMode)
-		if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return err
-		}
-		return nil
+		return serve(ctx, a, cfg, log)
 	}
 	return fmt.Errorf("unknown command %q (use serve, migrate, seed or create-admin)", cmd)
+}
+
+// serve runs the web app, mobile API and background jobs until ctx ends.
+func serve(ctx context.Context, a *app.App, cfg config.Config, log *slog.Logger) error {
+	srv, err := web.New(a)
+	if err != nil {
+		return err
+	}
+	srv.API = api.New(a).Handler()
+	every := 30 * time.Second
+	if d, err := time.ParseDuration(os.Getenv("JOBS_INTERVAL")); err == nil && d > 0 {
+		every = d
+	}
+	go a.RunJobs(ctx, every)
+	hs := &http.Server{Addr: cfg.Addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 60 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 120 * time.Second}
+	go func() {
+		<-ctx.Done()
+		sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		_ = hs.Shutdown(sctx)
+	}()
+	log.Info("Eimsky is running", "url", cfg.BaseURL, "addr", cfg.Addr, "dev_mode", cfg.DevMode)
+	if err := hs.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if strings.Contains(err.Error(), "address already in use") {
+			return fmt.Errorf("port %s is already in use: stop the other program or choose another port with --port", strings.TrimPrefix(cfg.Addr, ":"))
+		}
+		return err
+	}
+	return nil
 }

@@ -224,3 +224,63 @@ func ValidateHSCode(code string) error {
 	}
 	return nil
 }
+
+// Dims returns a container's typical internal length, width and height in metres.
+func (s ContainerSpec) Dims() (l, w, h float64) {
+	w, h = 2.35, 2.39
+	if strings.Contains(s.Code, "HC") {
+		h = 2.69
+	}
+	switch s.Code {
+	case "20GP":
+		l = 5.9
+	case "40GP", "40HC":
+		l = 12.03
+	case "45HC":
+		l = 13.56
+	default:
+		l = s.InternalCBM / (w * h)
+	}
+	return
+}
+
+// AllowedGrades lists the box grades a category may travel in.
+func (c Category) AllowedGrades() []Grade {
+	var out []Grade
+	for _, g := range Grades {
+		if GradeAllows(g, c) == nil {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// Clashes lists the categories c may not share a box with.
+func (c Category) Clashes() []Category {
+	var out []Category
+	for _, x := range Categories {
+		if x != c && !Compatible(c, x) {
+			out = append(out, x)
+		}
+	}
+	return out
+}
+
+// Examples gives typical apparel raw materials in a category.
+func (c Category) Examples() string {
+	switch c {
+	case CatFabric:
+		return "Woven and knitted fabric, denim, lace"
+	case CatTrims:
+		return "Buttons, zips, labels, thread, elastic"
+	case CatPackaging:
+		return "Cartons, poly bags, hangers, tissue"
+	case CatDyes:
+		return "Reactive dyes, finishing agents (non-DG)"
+	case CatMachinery:
+		return "Sewing machine parts, needles, spares"
+	case CatDG:
+		return "Flammable chemicals, aerosols (IMDG)"
+	}
+	return ""
+}

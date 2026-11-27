@@ -12,6 +12,9 @@ type ContainerOption struct {
 	ExpectedBid float64 // USD per box
 	PerCBM      float64 // freight per CBM if this box is used
 	Best        bool
+	Box         *Box       // the simulated load
+	Unplaced    []Unplaced // lots that don't go in, with why
+	Grade       Grade
 }
 
 // ContainerOptions simulates filling one box of each type with the lots, in
@@ -25,8 +28,8 @@ func ContainerOptions(specs []ContainerSpec, grade Grade, stowage float64, lots 
 			continue
 		}
 		b := NewBox(s, grade, stowage)
-		FirstFit([]*Box{b}, lots)
-		o := ContainerOption{Spec: s, Usable: b.Usable, LotsFit: len(b.Lots), PlacedCBM: b.UsedCBM(), FillPct: b.FillPct(), ExpectedBid: bid}
+		un := FirstFit([]*Box{b}, lots)
+		o := ContainerOption{Spec: s, Usable: b.Usable, LotsFit: len(b.Lots), PlacedCBM: b.UsedCBM(), FillPct: b.FillPct(), ExpectedBid: bid, Box: b, Unplaced: un, Grade: grade}
 		if o.PlacedCBM > 0 {
 			o.PerCBM = bid / o.PlacedCBM
 		}
@@ -115,4 +118,40 @@ func PoolOptions(specs []ContainerSpec, stowage float64, totalCBM float64, ownCo
 	}
 	opts[best].Recommended = true
 	return opts
+}
+
+// UnplacedGroup is a set of lots left out for the same reason.
+type UnplacedGroup struct {
+	Reason string
+	Lots   []Lot
+}
+
+// GroupUnplaced groups lots that don't fit by reason, keeping first-seen order.
+func GroupUnplaced(un []Unplaced) []UnplacedGroup {
+	var out []UnplacedGroup
+	idx := map[string]int{}
+	for _, u := range un {
+		i, ok := idx[u.Reason]
+		if !ok {
+			i = len(out)
+			idx[u.Reason] = i
+			out = append(out, UnplacedGroup{Reason: u.Reason})
+		}
+		out[i].Lots = append(out[i].Lots, u.Lot)
+	}
+	return out
+}
+
+// SavingVsCoload is what one box of this option saves against sending what it
+// carries to the co-load partner (negative: co-load is cheaper).
+func (o ContainerOption) SavingVsCoload(coloadRate float64) float64 {
+	return Round(o.PlacedCBM*coloadRate-o.ExpectedBid, 0)
+}
+
+// LoadedKg is the simulated weight in the box.
+func (o ContainerOption) LoadedKg() float64 {
+	if o.Box == nil {
+		return 0
+	}
+	return o.Box.UsedKg()
 }

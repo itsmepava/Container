@@ -5,7 +5,7 @@ Eimsky pools apparel factories' LCL raw-material imports into full containers. F
 | Who | App | What they do |
 |---|---|---|
 | Factories (shippers) | Web: `/f` | Book space, see the space left and a capped cost estimate, upload documents, follow progress, download invoices, answer move requests, manage their team |
-| Eimsky ops and admins | Web: `/ops`, `/admin` | Lane pools board, own-box/co-load/hybrid decision, load planner with CBM visualizer, tenders and awards with audited overrides, bookings, invoices, lanes and sailings, company approvals, users, settings, audit log |
+| Eimsky ops and admins | Web: `/ops`, `/admin` | Lane pools board, own-box/co-load/hybrid decision, load planner with a to-scale 3D container view, side-by-side container options and loading rules, tenders and awards with audited overrides, bookings, invoices, lanes and sailings, company approvals, users, settings, audit log |
 | Forwarders | Mobile (iOS and Android) | Register with documents and lanes, get push notifications for new tenders, place sealed bids, see awards with shipper contacts and documents, upload booking confirmations |
 | JAAF / FAAMA | Web: `/insights` | Anonymised totals: volume, fill, all-in cost, cargo mix, by lane and HS code. Figures from fewer than 3 factories are hidden |
 

@@ -48,8 +48,8 @@
       <a class="btn" href="/ops/sailings/{{$s.ID}}/plan">Open load planner<svg class="i"><use href="#i-chevron"/></svg></a>
     </div>
     {{with $p.PrimaryBox}}
-      {{template "box-vis" (dict "Box" .Box "Lots" .Lots)}}
-      <div class="box-ends"><span>Nose</span><span>{{.Container.BoxCode}} · {{n1 .Box.UsedCBM}} / {{n1 .Box.Usable}} CBM · {{pct .Box.FillPct}}</span><span>Doors</span></div>
+      <div class="row between" style="margin-top:6px"><b>Container 1 · {{.Container.BoxCode}} <span class="grade-chip">Grade {{.Container.Grade}}</span></b><span class="mono small">{{n1 .Box.UsedCBM}} / {{n1 .Box.Usable}} CBM · {{pct .Box.FillPct}}</span></div>
+      {{box3d . $p}}
     {{end}}
     <div class="grid cols-2" style="margin-top:14px">
       <div>

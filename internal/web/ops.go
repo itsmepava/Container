@@ -162,6 +162,7 @@ type planData struct {
 	Sailings []*app.Sailing
 	NextPlan *app.Planner
 	MoveLot  *app.PlannedLot
+	Cards    []app.PoolCard
 	Locked   bool
 	Specs    []domain.ContainerSpec
 	Stowage  float64
@@ -178,6 +179,7 @@ func (s *Server) planPage(w http.ResponseWriter, r *http.Request) {
 	d := planData{P: p, Locked: p.Sailing.Status != "open", Specs: p.Specs, Stowage: s.app.Settings(ctx).Stowage}
 	d.Lanes, _ = s.app.Lanes(ctx, false)
 	d.Sailings, _ = s.app.Sailings(ctx, app.SailingFilter{LaneID: p.Sailing.Lane.ID, FromWeek: s.app.Now().AddDate(0, 0, -28)})
+	d.Cards, _ = s.app.LanePoolCards(ctx, d.Sailings)
 	if p.NextSailing != nil {
 		d.NextPlan, _ = s.app.Planner(ctx, p.NextSailing.ID)
 	}

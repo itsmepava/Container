@@ -199,7 +199,7 @@ async function openDialogFor(page, action) {
     await Promise.all([ops.waitForNavigation(), vessels.nth(0).check()]);
     await result(ops, 'Vessel updated');
     await submit(ops, `/ops/sailings/${planSailing}/containers`, 'Container added');
-    const containerForms = ops.locator('form[action^="/ops/containers/"]:not([action$="/remove"])');
+    const containerForms = ops.locator('form[action^="/ops/containers/"]:has(select[name=box])');
     const c2 = await containerForms.nth(1).getAttribute('action');
     await autoselect(ops, `form[action="${c2}"] select[name=box]`, '40GP', 'Container 2 is now a 40GP');
     const placeSel = ops.locator('form[action$="/place"] select').last();
@@ -211,7 +211,7 @@ async function openDialogFor(page, action) {
     if (await form(ops, `/ops/sailings/${planSailing}/autoplace`).count()) await submit(ops, `/ops/sailings/${planSailing}/autoplace`, 'Placed');
 
     step('ops: container options');
-    const use = ops.locator('form[action^="/ops/containers/"]:has(input[name=box][value="45HC"]) button');
+    const use = ops.locator('form[action^="/ops/containers/"]:has(input[name=box][value="45HC"]) button').first();
     if (await use.count()) {
       await Promise.all([ops.waitForNavigation(), use.click()]);
       await result(ops, 'is now a 45HC');

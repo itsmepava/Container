@@ -228,8 +228,13 @@
   document.addEventListener("mouseover", function (e) {
     var el = e.target.closest("[data-lot]");
     document.querySelectorAll(".hl").forEach(function (x) { x.classList.remove("hl"); });
-    if (!el) return;
-    document.querySelectorAll('[data-lot="' + el.getAttribute("data-lot") + '"]').forEach(function (x) { x.classList.add("hl"); });
+    document.querySelectorAll(".box3d.dim").forEach(function (x) { x.classList.remove("dim"); });
+    if (!el || el.getAttribute("data-lot") === "0") return;
+    document.querySelectorAll('[data-lot="' + el.getAttribute("data-lot") + '"]').forEach(function (x) {
+      x.classList.add("hl");
+      var svg = x.closest(".box3d");
+      if (svg) svg.classList.add("dim");
+    });
   });
 })();
 

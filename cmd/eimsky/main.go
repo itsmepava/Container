@@ -103,7 +103,11 @@ func run(cmd string, args []string, log *slog.Logger) error {
 			return err
 		}
 		srv.API = api.New(a).Handler()
-		go a.RunJobs(ctx, 30*time.Second)
+		every := 30 * time.Second
+		if d, err := time.ParseDuration(os.Getenv("JOBS_INTERVAL")); err == nil && d > 0 {
+			every = d
+		}
+		go a.RunJobs(ctx, every)
 		hs := &http.Server{Addr: cfg.Addr, Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second, ReadTimeout: 60 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 120 * time.Second}
 		go func() {
 			<-ctx.Done()

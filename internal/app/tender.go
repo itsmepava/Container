@@ -777,3 +777,23 @@ func (a *App) AwardDetailFor(ctx context.Context, u *User, tenderID int64) (*Awa
 	}
 	return d, nil
 }
+
+// CloseTenderNow ends bidding early, e.g. once every invited forwarder has bid.
+func (a *App) CloseTenderNow(ctx context.Context, actor *User, tenderID int64) error {
+	t, err := a.loadTender(ctx, a.DB, tenderID)
+	if err != nil {
+		return err
+	}
+	if t.Status != "open" {
+		return Errf("Bidding on %s isn't open.", t.Ref)
+	}
+	if t.BidCount == 0 {
+		return Errf("There are no bids yet. Extend the deadline or invite more forwarders instead.")
+	}
+	if _, err := a.DB.Exec(ctx, `UPDATE tenders SET closes_at=$2 WHERE id=$1 AND status='open'`, tenderID, a.Now()); err != nil {
+		return err
+	}
+	_ = a.Audit(ctx, a.DB, actor, "tender.close_now", "tender", tenderID, "Bidding closed early by "+actor.Name, nil)
+	_, err = a.CloseDueTenders(ctx)
+	return err
+}

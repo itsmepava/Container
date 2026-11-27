@@ -29,6 +29,7 @@ func (s *Server) opsRoutes(r chi.Router) {
 	r.Get("/tenders/{id}", s.tenderPage)
 	r.Post("/tenders/{id}/award", s.tenderAward)
 	r.Post("/tenders/{id}/extend", s.tenderExtend)
+	r.Post("/tenders/{id}/close", s.tenderClose)
 	r.Post("/tenders/{id}/invite", s.tenderInvite)
 	r.Post("/tenders/{id}/docs", s.tenderUpload)
 	r.Get("/bookings", s.opsBookings)
@@ -474,4 +475,13 @@ func (s *Server) opsInvoicePaid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.done(w, r, "Invoice updated.", "")
+}
+
+func (s *Server) tenderClose(w http.ResponseWriter, r *http.Request) {
+	id := idParam(r, "id")
+	if err := s.app.CloseTenderNow(r.Context(), userOf(r), id); err != nil {
+		s.fail(w, r, err, tenderURL(id))
+		return
+	}
+	s.done(w, r, "Bidding closed. Review the bids and award the box.", tenderURL(id))
 }

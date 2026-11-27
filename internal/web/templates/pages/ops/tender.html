@@ -96,7 +96,8 @@
       <div class="alert good" style="margin-top:12px">Every shipper stays under its estimate. All-in USD {{n2 $v.Summary.AllInPerWM}} per W/M including the fee.</div>
     {{end}}
     {{if eq $t.Status "open"}}
-      <p class="muted small" style="margin:12px 0 0">You can award once bids close {{dt $t.ClosesAt}}.</p>
+      <p class="muted small" style="margin:12px 0 10px">You can award once bids close {{dt $t.ClosesAt}}{{if $v.Bids}}, or close bidding now if every forwarder you expect has bid{{end}}.</p>
+      {{if $v.Bids}}<form method="post" action="/ops/tenders/{{$t.ID}}/close" data-confirm="Close bidding on {{$t.Ref}} now? Forwarders can't change their bids after this.">{{template "csrf" $.CSRF}}<button class="btn block">Close bidding now</button></form>{{end}}
     {{else}}
     <form method="post" action="/ops/tenders/{{$t.ID}}/award" style="margin-top:14px" data-confirm="Award {{$t.Ref}} to {{$s.Bid.CompanyName}} at USD {{moneyShort $s.Bid.AmountCents}}?">{{template "csrf" $.CSRF}}
       <input type="hidden" name="bid" value="{{$s.Bid.ID}}">

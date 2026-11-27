@@ -1,0 +1,6 @@
+{
+  "name": "eimsky-e2e",
+  "private": true,
+  "scripts": { "test": "./run.sh" },
+  "devDependencies": { "playwright": "1.63.0" }
+}

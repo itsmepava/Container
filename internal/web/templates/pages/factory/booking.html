@@ -81,8 +81,8 @@
     {{with $d.Box}}
     <section class="card">
       <div class="card-head" style="margin-bottom:10px"><h3>Your space in the {{.Code}}</h3><span class="muted small">{{pct .FillPct}} full</span></div>
-      {{box3dMine .Code .Usable .Mine .Others}}
-      <div class="row small" style="gap:6px 14px"><span><span class="swatch-dot" style="background:var(--brand)"></span>You · {{n1 .Mine}} CBM</span>{{if gt .Others 0.0}}<span><span class="swatch-dot" style="background:var(--line-strong)"></span>Other shippers</span>{{end}}<span class="muted">{{n1 .Free}} CBM free</span></div>
+      <div data-fig-wrap>{{mineFig .Code .Usable .Mine .Others}}</div>
+      <div class="row small" style="gap:6px 14px"><span><span class="swatch-dot" style="background:#127a52"></span>You · {{n1 .Mine}} CBM</span>{{if gt .Others 0.0}}<span><span class="swatch-dot" style="background:#c3cdd8"></span>Other shippers</span>{{end}}<span class="muted">{{n1 .Free}} CBM free</span></div>
       <p class="faint small" style="margin:8px 0 0">Other shippers' names, cargo and prices are never shown.</p>
     </section>
     {{end}}

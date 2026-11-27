@@ -119,39 +119,3 @@ func PoolOptions(specs []ContainerSpec, stowage float64, totalCBM float64, ownCo
 	opts[best].Recommended = true
 	return opts
 }
-
-// UnplacedGroup is a set of lots left out for the same reason.
-type UnplacedGroup struct {
-	Reason string
-	Lots   []Lot
-}
-
-// GroupUnplaced groups lots that don't fit by reason, keeping first-seen order.
-func GroupUnplaced(un []Unplaced) []UnplacedGroup {
-	var out []UnplacedGroup
-	idx := map[string]int{}
-	for _, u := range un {
-		i, ok := idx[u.Reason]
-		if !ok {
-			i = len(out)
-			idx[u.Reason] = i
-			out = append(out, UnplacedGroup{Reason: u.Reason})
-		}
-		out[i].Lots = append(out[i].Lots, u.Lot)
-	}
-	return out
-}
-
-// SavingVsCoload is what one box of this option saves against sending what it
-// carries to the co-load partner (negative: co-load is cheaper).
-func (o ContainerOption) SavingVsCoload(coloadRate float64) float64 {
-	return Round(o.PlacedCBM*coloadRate-o.ExpectedBid, 0)
-}
-
-// LoadedKg is the simulated weight in the box.
-func (o ContainerOption) LoadedKg() float64 {
-	if o.Box == nil {
-		return 0
-	}
-	return o.Box.UsedKg()
-}

@@ -88,11 +88,11 @@ var Grades = []Grade{GradeA, GradeB, GradeC}
 func (g Grade) Label() string {
 	switch g {
 	case GradeA:
-		return "A · Clean, food grade"
+		return "A · Food grade"
 	case GradeB:
-		return "B · General cargo"
+		return "B · General (cargo-worthy)"
 	case GradeC:
-		return "C · Heavy, older box"
+		return "C · Heavy duty"
 	}
 	return string(g)
 }
@@ -283,4 +283,12 @@ func (c Category) Examples() string {
 		return "Flammable chemicals, aerosols (IMDG)"
 	}
 	return ""
+}
+
+// Kind is the container category a cargo category needs.
+func (c Category) Kind() string {
+	if c == CatDG {
+		return "DG-approved box, separate booking"
+	}
+	return "Dry"
 }

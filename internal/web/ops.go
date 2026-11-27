@@ -25,6 +25,14 @@ func (s *Server) opsRoutes(r chi.Router) {
 	r.Post("/containers/{id}/remove", s.planRemoveContainer)
 	r.Post("/bookings/{id}/place", s.planPlace)
 	r.Post("/bookings/{id}/move", s.planMove)
+	r.Post("/bookings/{id}/roll", s.planRoll)
+	r.Post("/bookings/{id}/remove", s.planRemoveBooking)
+	r.Post("/sailings/{id}/bookings", s.planAddBooking)
+	r.Post("/sailings/{id}/convert", s.planConvert)
+	r.Post("/lanes/{id}/sailings", s.planAddSailing)
+	r.Post("/lanes/{id}/options", s.planAddOption)
+	r.Post("/lanes/{id}/money", s.planMoney)
+	r.Post("/lane-options/{id}/remove", s.planRemoveOption)
 	r.Get("/tenders", s.tendersPage)
 	r.Get("/tenders/{id}", s.tenderPage)
 	r.Post("/tenders/{id}/award", s.tenderAward)
@@ -156,16 +164,26 @@ func SailingOpen(now time.Time) app.SailingFilter {
 	return app.SailingFilter{FromWeek: now.AddDate(0, 0, -14)}
 }
 
+type navOpt struct {
+	Label, URL string
+	On         bool
+}
+
 type planData struct {
-	P        *app.Planner
-	Lanes    []*app.Lane
-	Sailings []*app.Sailing
-	NextPlan *app.Planner
-	MoveLot  *app.PlannedLot
-	Cards    []app.PoolCard
-	Locked   bool
-	Specs    []domain.ContainerSpec
-	Stowage  float64
+	P          *app.Planner
+	Lanes      []*app.Lane
+	Sailings   []*app.Sailing
+	NextPlan   *app.Planner
+	MoveLot    *app.PlannedLot
+	Cards      []app.PoolCard
+	Origins    []navOpt
+	Dests      []navOpt
+	Factories  []*app.Company
+	DefaultETD string // add-a-sailing form: a week from today
+	OpenManual bool   // manual placement section starts open
+	Locked     bool
+	Specs      []domain.ContainerSpec
+	Stowage    float64
 }
 
 func (s *Server) planPage(w http.ResponseWriter, r *http.Request) {
@@ -180,6 +198,19 @@ func (s *Server) planPage(w http.ResponseWriter, r *http.Request) {
 	d.Lanes, _ = s.app.Lanes(ctx, false)
 	d.Sailings, _ = s.app.Sailings(ctx, app.SailingFilter{LaneID: p.Sailing.Lane.ID, FromWeek: s.app.Now().AddDate(0, 0, -28)})
 	d.Cards, _ = s.app.LanePoolCards(ctx, d.Sailings)
+	d.Factories, _ = s.app.Companies(ctx, "factory", "approved", "")
+	d.DefaultETD = s.app.Now().In(domain.Colombo).AddDate(0, 0, 7).Format("2006-01-02")
+	d.OpenManual = r.URL.Query().Get("lot") != ""
+	seen := map[string]bool{}
+	for _, l := range d.Lanes {
+		if !seen[l.Origin.Code] {
+			seen[l.Origin.Code] = true
+			d.Origins = append(d.Origins, navOpt{Label: l.Origin.Label(), URL: fmt.Sprintf("/ops/plan?lane=%d", l.ID), On: l.Origin.Code == p.Sailing.Lane.Origin.Code})
+		}
+		if l.Origin.Code == p.Sailing.Lane.Origin.Code {
+			d.Dests = append(d.Dests, navOpt{Label: l.Dest.Label(), URL: fmt.Sprintf("/ops/plan?lane=%d", l.ID), On: l.ID == p.Sailing.Lane.ID})
+		}
+	}
 	if p.NextSailing != nil {
 		d.NextPlan, _ = s.app.Planner(ctx, p.NextSailing.ID)
 	}
@@ -545,4 +576,78 @@ func (s *Server) tenderPayout(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.done(w, r, "Payment record updated.", "")
+}
+
+// ---------- Load planner: visualizer workflow ----------
+
+func (s *Server) planRoll(w http.ResponseWriter, r *http.Request) {
+	if err := s.app.Roll(r.Context(), userOf(r), idParam(r, "id")); err != nil {
+		s.fail(w, r, err, "")
+		return
+	}
+	s.done(w, r, "Roll requested. The shipper is asked to move to the next sailing; their cost cap stays.", "")
+}
+
+func (s *Server) planRemoveBooking(w http.ResponseWriter, r *http.Request) {
+	sid, err := s.app.OpsRemoveBooking(r.Context(), userOf(r), idParam(r, "id"))
+	if err != nil {
+		s.fail(w, r, err, "")
+		return
+	}
+	s.done(w, r, "Booking removed and the shipper told.", planURL(sid))
+}
+
+func (s *Server) planAddBooking(w http.ResponseWriter, r *http.Request) {
+	id := idParam(r, "id")
+	in := app.OpsBookingInput{SailingID: id, CompanyID: formInt(r, "company"), CBM: formFloat(r, "cbm"), Kg: formFloat(r, "kg"), Category: domain.Category(r.FormValue("category"))}
+	if _, err := s.app.OpsAddBooking(r.Context(), userOf(r), in); err != nil {
+		s.fail(w, r, err, planURL(id))
+		return
+	}
+	s.done(w, r, "Booking added to this lane. The shipper has been told.", planURL(id))
+}
+
+func (s *Server) planConvert(w http.ResponseWriter, r *http.Request) {
+	id := idParam(r, "id")
+	msg, err := s.app.ConvertToFCL(r.Context(), userOf(r), id, formInt(r, "option"))
+	if err != nil {
+		s.fail(w, r, err, planURL(id))
+		return
+	}
+	s.done(w, r, msg, planURL(id))
+}
+
+func (s *Server) planAddSailing(w http.ResponseWriter, r *http.Request) {
+	lane := idParam(r, "id")
+	etd, _ := time.ParseInLocation("2006-01-02", r.FormValue("etd"), domain.Colombo)
+	id, err := s.app.AddSailingQuick(r.Context(), userOf(r), app.QuickSailingInput{LaneID: lane, Vessel: r.FormValue("vessel"), Voyage: r.FormValue("voyage"), ETD: etd, CutoffDays: int(formInt(r, "cutoff"))})
+	if err != nil {
+		s.fail(w, r, err, "")
+		return
+	}
+	s.done(w, r, "Sailing added.", planURL(id))
+}
+
+func (s *Server) planAddOption(w http.ResponseWriter, r *http.Request) {
+	if err := s.app.AddLaneOption(r.Context(), userOf(r), idParam(r, "id"), r.FormValue("box"), domain.Grade(r.FormValue("grade")), formFloat(r, "cost")); err != nil {
+		s.fail(w, r, err, "")
+		return
+	}
+	s.done(w, r, "Container option added.", "")
+}
+
+func (s *Server) planRemoveOption(w http.ResponseWriter, r *http.Request) {
+	if _, err := s.app.RemoveLaneOption(r.Context(), userOf(r), idParam(r, "id")); err != nil {
+		s.fail(w, r, err, "")
+		return
+	}
+	s.done(w, r, "Container option removed.", "")
+}
+
+func (s *Server) planMoney(w http.ResponseWriter, r *http.Request) {
+	if err := s.app.SavePlannerMoney(r.Context(), userOf(r), idParam(r, "id"), formFloat(r, "eff"), formFloat(r, "sell"), formFloat(r, "hand")); err != nil {
+		s.fail(w, r, err, "")
+		return
+	}
+	s.done(w, r, "Loading and money saved.", "")
 }

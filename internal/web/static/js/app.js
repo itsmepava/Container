@@ -228,11 +228,11 @@
   document.addEventListener("mouseover", function (e) {
     var el = e.target.closest("[data-lot]");
     document.querySelectorAll(".hl").forEach(function (x) { x.classList.remove("hl"); });
-    document.querySelectorAll(".box3d.dim").forEach(function (x) { x.classList.remove("dim"); });
+    document.querySelectorAll(".fig.dim").forEach(function (x) { x.classList.remove("dim"); });
     if (!el || el.getAttribute("data-lot") === "0") return;
     document.querySelectorAll('[data-lot="' + el.getAttribute("data-lot") + '"]').forEach(function (x) {
       x.classList.add("hl");
-      var svg = x.closest(".box3d");
+      var svg = x.closest(".fig");
       if (svg) svg.classList.add("dim");
     });
   });
@@ -254,3 +254,76 @@ document.addEventListener("change", function (e) {
   if (lock) lock.value = fmt(new Date(t - c.getAttribute("data-derive-lock") * 3600e3));
   if (close) close.value = fmt(new Date(t - c.getAttribute("data-derive-close") * 3600e3));
 });
+
+// Container drawings: oblique 3D, to true scale, as the load planner shows
+// them. Each .fig[data-box] carries the container and its lots as JSON.
+(function () {
+  function f1(v) { return (Math.round(v * 10) / 10).toFixed(1); }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
+  function draw(svg, p, s) {
+    var W = svg.clientWidth; if (!W) return;
+    var H = svg.clientHeight;
+    var dx = p.W * s * .42, dy = p.W * s * .28, x0 = 12, y0 = dy + 14, Ls = p.L * s, Hs = p.H * s, perCBM = p.usable > 0 ? Ls / p.usable : 0;
+    var g = '<polygon class="bx-top" points="' + x0 + ',' + y0 + ' ' + (x0 + Ls) + ',' + y0 + ' ' + (x0 + Ls + dx) + ',' + (y0 - dy) + ' ' + (x0 + dx) + ',' + (y0 - dy) + '"/>' +
+      '<rect class="bx-front" x="' + x0 + '" y="' + y0 + '" width="' + Ls + '" height="' + Hs + '"/>';
+    for (var m = 0.3; m < p.L; m += 0.3) g += '<line class="bx-rib" x1="' + (x0 + m * s) + '" x2="' + (x0 + m * s) + '" y1="' + (y0 + 2) + '" y2="' + (y0 + Hs - 2) + '"/>';
+    var a = 0, used = 0;
+    (p.lots || []).forEach(function (l) {
+      var len = Math.min(l.c * perCBM, Ls - a), c = l.col, x = x0 + a, ink = l.ink || "#fff";
+      if (len <= 0) return;
+      g += '<g class="bx-lot" data-lot="' + (l.id || 0) + '"><title>' + esc(l.n) + ' · ' + f1(l.c) + ' CBM</title>' +
+        '<rect x="' + x + '" y="' + y0 + '" width="' + len + '" height="' + Hs + '" fill="' + c + '" stroke="#fff"/>' +
+        '<polygon points="' + x + ',' + y0 + ' ' + (x + len) + ',' + y0 + ' ' + (x + len + dx) + ',' + (y0 - dy) + ' ' + (x + dx) + ',' + (y0 - dy) + '" fill="' + c + '" opacity=".72" stroke="#fff"/>';
+      if (len > 54) g += '<text x="' + (x + len / 2) + '" y="' + (y0 + Hs / 2 - 4) + '" text-anchor="middle" fill="' + ink + '">' + esc(l.n.split(" ")[0]) + '</text><text x="' + (x + len / 2) + '" y="' + (y0 + Hs / 2 + 12) + '" text-anchor="middle" fill="' + ink + '">' + f1(l.c) + '</text>';
+      else if (len > 22) g += '<text x="' + (x + len / 2) + '" y="' + (y0 + Hs / 2 + 4) + '" text-anchor="middle" fill="' + ink + '" style="font-size:10px">' + f1(l.c) + '</text>';
+      g += '</g>';
+      a += len; used += l.c;
+    });
+    g += '<polygon class="bx-end" points="' + (x0 + Ls) + ',' + y0 + ' ' + (x0 + Ls + dx) + ',' + (y0 - dy) + ' ' + (x0 + Ls + dx) + ',' + (y0 - dy + Hs) + ' ' + (x0 + Ls) + ',' + (y0 + Hs) + '"/>';
+    g += '<line class="bx-door" x1="' + (x0 + Ls + dx * .5) + '" x2="' + (x0 + Ls + dx * .5) + '" y1="' + (y0 - dy * .5 + 6) + '" y2="' + (y0 - dy * .5 + Hs - 6) + '"/>';
+    if (a < Ls - 1) g += '<rect class="bx-free" x="' + (x0 + a + 2) + '" y="' + (y0 + 3) + '" width="' + Math.max(0, Ls - a - 4) + '" height="' + (Hs - 6) + '"/>' +
+      (Ls - a > 110 ? '<text class="bx-freetxt" x="' + (x0 + a + (Ls - a) / 2) + '" y="' + (y0 + Hs / 2 + 4) + '" text-anchor="middle">' + f1(Math.max(0, p.usable - used)) + ' CBM free</text>' : "");
+    if (p.be && p.be < p.usable) {
+      var bx = x0 + p.be * perCBM;
+      g += '<line class="bx-be" x1="' + bx + '" x2="' + bx + '" y1="' + (y0 - 6) + '" y2="' + (y0 + Hs + 6) + '"/><text class="bx-betxt" x="' + bx + '" y="' + (y0 + Hs + (x0 + Ls - bx < 150 ? 34 : 20)) + '" text-anchor="middle">break-even ' + f1(p.be) + '</text>';
+    }
+    g += '<text class="bx-usetxt" x="' + (x0 + Ls) + '" y="' + (y0 + Hs + 20) + '" text-anchor="end">usable ' + f1(p.usable) + ' CBM</text>';
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.innerHTML = g;
+  }
+  function size(fig) {
+    var p;
+    try { p = JSON.parse(fig.getAttribute("data-box")); } catch (e) { return; }
+    var wrap = fig.closest("[data-fig-wrap]") || fig.parentNode;
+    var s = Math.max(16, (wrap.clientWidth - 40 - 2.35 * .42 * 40) / p.maxL / 1.02);
+    var h = Math.round(p.H * s + p.W * s * .28 + 56);
+    if (fig.style.height !== h + "px") fig.style.height = h + "px";
+    draw(fig.querySelector("svg"), p, s);
+  }
+  function all() { document.querySelectorAll(".fig[data-box]").forEach(size); }
+  if (window.ResizeObserver) {
+    var ro = new ResizeObserver(function (es) { es.forEach(function (e) { size(e.target); }); });
+    document.querySelectorAll(".fig[data-box]").forEach(function (f) { ro.observe(f); });
+  } else {
+    window.addEventListener("resize", all);
+  }
+  all();
+})();
+
+// Range inputs: show the value next to the label while dragging.
+document.addEventListener("input", function (e) {
+  if (!e.target.matches('input[type=range]')) return;
+  var out = e.target.closest("label") && e.target.closest("label").querySelector("[data-range-out]");
+  if (out) out.textContent = e.target.value + "%";
+});
+
+// <details data-remember>: stay open across reloads once you've been working in it.
+(function () {
+  document.querySelectorAll("details[data-remember]").forEach(function (d) {
+    var key = "open:" + location.pathname + "#" + d.id;
+    try { if (sessionStorage.getItem(key) === "1") d.open = true; } catch (e) {}
+    window.addEventListener("pagehide", function () {
+      try { sessionStorage.setItem(key, d.open ? "1" : "0"); } catch (e) {}
+    });
+  });
+})();

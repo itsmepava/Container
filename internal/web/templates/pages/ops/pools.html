@@ -49,7 +49,7 @@
     </div>
     {{with $p.PrimaryBox}}
       <div class="row between" style="margin-top:6px"><b>Container 1 · {{.Container.BoxCode}} <span class="grade-chip">Grade {{.Container.Grade}}</span></b><span class="mono small">{{n1 .Box.UsedCBM}} / {{n1 .Box.Usable}} CBM · {{pct .Box.FillPct}}</span></div>
-      {{box3d . $p}}
+      <div data-fig-wrap>{{boxFig . $p}}</div>
     {{end}}
     <div class="grid cols-2" style="margin-top:14px">
       <div>

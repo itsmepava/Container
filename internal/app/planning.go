@@ -55,10 +55,21 @@ type PlannedLot struct {
 	MissingDocs []string
 	Reason      string // why it is unplaced
 	OutOfBest   string // why it doesn't fit the best container option
+	Hue         string // lot colour in the load planner
 	PendingMove *MoveRequest
 }
 
 func (l PlannedLot) DocsComplete() bool { return len(l.MissingDocs) == 0 }
+
+// Rollable reports whether the lot is out for lack of space (in the best
+// container option, or in the containers booked now), so rolling it to the
+// next sailing is the natural fix.
+func (l PlannedLot) Rollable() bool {
+	if l.Booking.Mode != "pool" || l.PendingMove != nil {
+		return false
+	}
+	return l.OutOfBest == "no space left" || strings.HasPrefix(l.Reason, "doesn't fit") || strings.HasPrefix(l.Reason, "over the box")
+}
 
 type PlannedBox struct {
 	Container *Container
@@ -127,20 +138,38 @@ type Planner struct {
 	Threshold    float64 // own-box threshold, % fill
 	PrimaryFill  float64 // % fill of the first box
 	Below        bool    // first box is below the own-box threshold
-	Best         *domain.ContainerOption
-	ColorOf      map[int64]int // booking ID → lot colour
+	HueOf        map[int64]string
+	Fleet        []domain.FleetPlan // the lane's container options, simulated
+	BestFleet    int                // index into Fleet; -1: none breaks even
+	Sell         float64            // selling price per W/M
+	Handling     float64            // handling cost per W/M
+	Stowage      float64
+	Converted    bool // Container 1 is the best option, loaded as planned
 	Bookings     int
 	TotalKg      float64
 	TotalWM      float64
 }
 
-// BreakEvenFor is the CBM at which a box of this type beats co-load.
-func (p *Planner) BreakEvenFor(code string) float64 {
-	be := domain.BreakEvenCBM(p.Sailing.Lane.Rates[code], p.ColoadRate)
-	if be != be || be > 1e6 { // NaN or no co-load rate
-		return 0
+// LotHues are the load planner's lot colours, deep enough for white text.
+var LotHues = []string{"#0a4fa0", "#6a4aa5", "#127a52", "#b45309", "#0e7490", "#9d174d", "#4d7c0f", "#7c2d12", "#1e40af", "#86198f", "#065f46", "#a16207", "#334155", "#be123c"}
+
+// BestFleetPlan is the container option with the highest margin, or nil.
+func (p *Planner) BestFleetPlan() *domain.FleetPlan {
+	if p.BestFleet < 0 {
+		return nil
 	}
-	return domain.Round(be, 1)
+	return &p.Fleet[p.BestFleet]
+}
+
+// FleetMaxLen is the longest container among the lane's options.
+func (p *Planner) FleetMaxLen() float64 {
+	m := 5.9
+	for _, f := range p.Fleet {
+		if l, _, _ := f.Option.Spec.Dims(); l > m {
+			m = l
+		}
+	}
+	return m
 }
 
 // MaxLen is the longest container type, so drawings share one scale.
@@ -152,53 +181,6 @@ func (p *Planner) MaxLen() float64 {
 		}
 	}
 	return m
-}
-
-// Saving is what an option saves against co-loading what it carries.
-func (p *Planner) Saving(o domain.ContainerOption) float64 { return o.SavingVsCoload(p.ColoadRate) }
-
-// BoxSaving is what a planning container saves against co-loading its lots.
-func (p *Planner) BoxSaving(pb *PlannedBox) float64 {
-	return domain.Round(pb.Box.UsedCBM()*p.ColoadRate-p.Sailing.Lane.Rates[pb.Container.BoxCode], 0)
-}
-
-// Badge labels a load: the best option, profitable (above the own-box
-// threshold and cheaper than co-load), cheaper than co-load, or below break-even.
-type Badge struct{ Label, Class string }
-
-func (p *Planner) badge(fill, saving float64, best bool) Badge {
-	switch {
-	case best && saving > 0:
-		return Badge{"Best fit", "best"}
-	case saving > 0 && fill >= p.Threshold:
-		return Badge{"Profitable", "green"}
-	case saving > 0:
-		return Badge{"Cheaper than co-load", "blue"}
-	case best:
-		return Badge{"Best fit · below break-even", "amber"}
-	}
-	return Badge{"Below break-even", "amber"}
-}
-
-func (p *Planner) OptionBadge(o domain.ContainerOption) Badge {
-	return p.badge(o.FillPct, p.Saving(o), o.Best)
-}
-
-func (p *Planner) BoxBadge(pb *PlannedBox) Badge {
-	return p.badge(pb.Box.FillPct(), p.BoxSaving(pb), false)
-}
-
-// SwitchTo is the container type ops should switch the first box to, if the
-// best option differs from it and the plan is still open.
-func (p *Planner) SwitchTo() string {
-	pb := p.PrimaryBox()
-	if p.Best == nil || pb == nil || p.Sailing.Status != "open" || pb.Box.Locked {
-		return ""
-	}
-	if p.Best.Spec.Code == pb.Container.BoxCode {
-		return ""
-	}
-	return p.Best.Spec.Code
 }
 
 func (p *Planner) CanLock() bool { return len(p.Blockers) == 0 }
@@ -221,7 +203,8 @@ func (a *App) Planner(ctx context.Context, sailingID int64) (*Planner, error) {
 	if err != nil {
 		return nil, err
 	}
-	p := &Planner{Sailing: s, Specs: specs, ColoadRate: s.Lane.ColoadRate, ColorOf: map[int64]int{}}
+	p := &Planner{Sailing: s, Specs: specs, ColoadRate: s.Lane.ColoadRate, HueOf: map[int64]string{}, BestFleet: -1,
+		Sell: s.Lane.EstimatePerWM, Handling: s.Lane.HandlingPerWM, Stowage: st.Stowage}
 	cs, err := a.Containers(ctx, a.DB, sailingID)
 	if err != nil {
 		return nil, err
@@ -255,9 +238,9 @@ func (a *App) Planner(ctx context.Context, sailingID int64) (*Planner, error) {
 			}
 			continue
 		}
-		pl := PlannedLot{Booking: b, Label: LotLabel(n), Color: n % 10, MissingDocs: missing[b.ID], PendingMove: moves[b.ID]}
+		pl := PlannedLot{Booking: b, Label: LotLabel(n), Color: n % 10, Hue: LotHues[n%len(LotHues)], MissingDocs: missing[b.ID], PendingMove: moves[b.ID]}
+		p.HueOf[b.ID] = pl.Hue
 		n++
-		p.ColorOf[b.ID] = pl.Color
 		p.Bookings++
 		p.TotalKg += b.Kg
 		p.TotalWM += b.WM
@@ -293,6 +276,11 @@ func (a *App) Planner(ctx context.Context, sailingID int64) (*Planner, error) {
 			reason = "no container on this sailing"
 		}
 		p.Unplaced[i].Reason = reason
+		for j := range p.All {
+			if p.All[j].Booking.ID == u.Booking.ID {
+				p.All[j].Reason = reason
+			}
+		}
 	}
 	p.RequestedCBM = domain.Round(p.RequestedCBM, 2)
 	p.UsableCBM = domain.Round(p.UsableCBM, 2)
@@ -303,18 +291,28 @@ func (a *App) Planner(ctx context.Context, sailingID int64) (*Planner, error) {
 		grade, ownCode = cs[0].Grade, cs[0].BoxCode
 	}
 	p.Options = domain.ContainerOptions(specs, grade, st.Stowage, lots, s.Lane.Rates)
-	for i := range p.Options {
-		if p.Options[i].Best {
-			p.Best = &p.Options[i]
-		}
+	opts, err := a.LaneOptions(ctx, s.Lane.ID)
+	if err != nil {
+		return nil, err
 	}
-	if p.Best != nil {
+	p.Fleet, p.BestFleet = domain.PlanFleet(opts, st.Stowage, lots, p.Sell, p.Handling)
+	if bf := p.BestFleetPlan(); bf != nil {
 		why := map[int64]string{}
-		for _, u := range p.Best.Unplaced {
-			why[u.Lot.ID] = u.Reason
+		for _, r := range bf.Rej {
+			why[r.Lot.ID] = r.Why
 		}
 		for i := range p.All {
 			p.All[i].OutOfBest = why[p.All[i].Booking.ID]
+		}
+		if pb := p.PrimaryBox(); pb != nil && pb.Container.BoxCode == bf.Option.Spec.Code && pb.Container.Grade == bf.Option.Grade && len(pb.Lots) == len(bf.Fit) {
+			in := map[int64]bool{}
+			for _, l := range pb.Lots {
+				in[l.Booking.ID] = true
+			}
+			p.Converted = true
+			for _, l := range bf.Fit {
+				p.Converted = p.Converted && in[l.ID]
+			}
 		}
 	}
 	p.TotalWM = domain.Round(p.TotalWM, 2)

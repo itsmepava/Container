@@ -93,19 +93,20 @@ type Lane struct {
 	Fallback      map[string]float64 // pre-agreed rate per box code when nobody bids
 	FallbackID    int64              // pre-agreed forwarder
 	FallbackName  string
+	HandlingPerWM float64 // planner: handling cost per W/M
 }
 
 func (l *Lane) Label() string { return l.Origin.Label() + " → " + l.Dest.Label() }
 func (l *Lane) Short() string { return l.Origin.Name + " → " + l.Dest.Name }
 
 const laneCols = `l.id, o.code, o.name, o.country, d.code, d.name, d.country, l.active, l.coload_rate, l.estimate_per_wm, l.origin_cfs, l.default_box, l.default_grade,
-	COALESCE(l.fallback_company_id,0), COALESCE((SELECT name FROM companies WHERE id=l.fallback_company_id),'')`
+	COALESCE(l.fallback_company_id,0), COALESCE((SELECT name FROM companies WHERE id=l.fallback_company_id),''), l.handling_per_wm`
 
 func scanLane(row pgx.Row) (*Lane, error) {
 	l := &Lane{Rates: map[string]float64{}, Fallback: map[string]float64{}}
 	var g string
 	err := row.Scan(&l.ID, &l.Origin.Code, &l.Origin.Name, &l.Origin.Country, &l.Dest.Code, &l.Dest.Name, &l.Dest.Country,
-		&l.Active, &l.ColoadRate, &l.EstimatePerWM, &l.OriginCFS, &l.DefaultBox, &g, &l.FallbackID, &l.FallbackName)
+		&l.Active, &l.ColoadRate, &l.EstimatePerWM, &l.OriginCFS, &l.DefaultBox, &g, &l.FallbackID, &l.FallbackName, &l.HandlingPerWM)
 	l.DefaultGrade = domain.Grade(g)
 	return l, err
 }
@@ -224,6 +225,16 @@ func (a *App) SaveLane(ctx context.Context, actor *User, in LaneInput) (int64, e
 			if in.Rates[code] > 0 || in.Fallback[code] > 0 {
 				if _, err := tx.Exec(ctx, `INSERT INTO lane_box_rates(lane_id,box_code,expected_bid,fallback_rate) VALUES ($1,$2,$3,$4)`, id, code, in.Rates[code], in.Fallback[code]); err != nil {
 					return err
+				}
+			}
+		}
+		if in.ID == 0 {
+			// A new lane starts with one container option per priced box type.
+			for code, v := range in.Rates {
+				if v > 0 {
+					if _, err := tx.Exec(ctx, `INSERT INTO lane_options(lane_id,box_code,grade,cost) VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`, id, code, in.DefaultGrade, v); err != nil {
+						return err
+					}
 				}
 			}
 		}

@@ -176,6 +176,8 @@ func (a *App) SeedDemo(ctx context.Context) error {
 	}
 	sha := lane("CNSHA", "LKCMB", "Waigaoqiao CFS, Shanghai", "40HC", map[string]float64{"20GP": 1450, "40GP": 2200, "40HC": 2350, "45HC": 2600}, 55, 50)
 	ngb := lane("CNNGB", "LKCMB", "Beilun CFS, Ningbo", "40HC", map[string]float64{"20GP": 1400, "40GP": 2150, "40HC": 2300, "45HC": 2550}, 54, 50)
+	// A mix of grades on Shanghai, like a real fleet list.
+	_, _ = q.Exec(ctx, `UPDATE lane_options SET grade='B' WHERE lane_id=$1 AND box_code IN ('20GP','45HC')`, sha)
 	maa := lane("INMAA", "LKCMB", "Chennai Port CFS", "20GP", map[string]float64{"20GP": 900, "40GP": 1350, "40HC": 1450}, 48, 46)
 	for i, f := range fws {
 		lanes := []int64{sha, ngb}

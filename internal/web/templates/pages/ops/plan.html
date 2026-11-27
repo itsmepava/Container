@@ -1,273 +1,294 @@
 {{define "heading"}}Load planner{{end}}
-{{define "subbar"}}{{$d := .D}}{{$s := $d.P.Sailing}}
-<div class="subbar"><div class="subbar-in plan-sub">
-  <div class="field" style="margin:0;min-width:240px"><label>Lane</label>
-    <select data-nav aria-label="Lane">
-      {{range $d.Lanes}}<option value="/ops/plan?lane={{.ID}}" {{if eq .ID $s.Lane.ID}}selected{{end}}>{{.Label}}</option>{{end}}
-    </select></div>
-  <nav class="sail-strip" aria-label="Sailings on this lane">
-    {{range $d.Cards}}{{$c := .}}
-    <a class="sail-card {{if eq .Sailing.ID $s.ID}}on{{end}}" href="/ops/sailings/{{.Sailing.ID}}/plan" {{if eq .Sailing.ID $s.ID}}aria-current="page"{{end}}>
-      <span class="row between" style="gap:8px"><b>{{.Sailing.Label}}</b><span class="pill {{badgeClass .Badge}} plain">{{title (lower .Badge)}}</span></span>
-      <span class="meter slim {{if lt .FillPct .BreakEvenPct}}amber{{end}}"><span style="width:{{pctw .FillPct}}"></span></span>
-      <span class="sail-meta"><span class="num">{{n1 .Used}} / {{n1 .Usable}} CBM</span>{{if eq .Sailing.Status "open"}}<span>locks in <span data-countdown="{{iso .Sailing.PlanLockAt}}"></span></span>{{else}}<span>{{.Sailing.StatusLabel}}</span>{{end}}</span>
-    </a>
-    {{end}}
-  </nav>
-</div></div>
+{{define "subbar"}}{{$d := .D}}{{$p := $d.P}}{{$s := $p.Sailing}}
+<div class="vz-bar">
+ <div class="vz-bar-in">
+  <div class="vz-title"><span class="vz-kicker">Eimsky · CFS load planning · LCL to FCL</span><strong>CBM container visualizer</strong></div>
+  <div class="vz-lane">
+   <label>Port of loading<select data-nav aria-label="Port of loading">{{range $d.Origins}}<option value="{{.URL}}" {{if .On}}selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+   <span class="vz-arrow" aria-hidden="true">→</span>
+   <label>Port of discharge<select data-nav aria-label="Port of discharge">{{range $d.Dests}}<option value="{{.URL}}" {{if .On}}selected{{end}}>{{.Label}}</option>{{end}}</select></label>
+   <label class="vz-sail-sel">Sailing<select data-nav aria-label="Sailing">{{range $d.Cards}}<option value="/ops/sailings/{{.Sailing.ID}}/plan" {{if eq .Sailing.ID $s.ID}}selected{{end}}>{{sailLabel .Sailing}}</option>{{else}}<option value="">No sailings: add one</option>{{end}}</select></label>
+  </div>
+ </div>
+ <nav class="vz-sails" aria-label="Sailings on this lane">
+  {{range $d.Cards}}{{$lt := leftTxt .Sailing}}
+  <a class="vz-sl {{if eq .Sailing.ID $s.ID}}on{{end}} {{if or (eq $lt "sailed") (eq $lt "cut-off passed")}}closed{{end}}" href="/ops/sailings/{{.Sailing.ID}}/plan" {{if eq .Sailing.ID $s.ID}}aria-current="page"{{end}}>
+   <b>{{sailLabel .Sailing}}</b>
+   <small>CFS cut-off {{cutTxt .Sailing.CFSCutoff}} · {{$lt}}</small>
+   <small>{{n1 .Used}} CBM booked{{if ne .Sailing.Status "open"}} · {{.Sailing.StatusLabel}}{{end}}</small>
+   <div class="vz-bar2"><i style="width:{{pctw .FillPct}}"></i></div>
+  </a>
+  {{end}}
+ </nav>
+ <div class="vz-tot">
+  <span>{{$s.Lane.Origin.Name}} → {{$s.Lane.Dest.Name}}</span><span>{{sailLabel $s}}</span><span>{{leftTxt $s}}</span><span>{{$p.Bookings}} bookings</span><span>{{n1 $p.RequestedCBM}} CBM</span><span>{{thousands $p.TotalKg}} kg</span><span>{{n1 $p.TotalWM}} W/M</span>
+ </div>
+</div>
 {{end}}
 
 {{define "content"}}
-{{$d := .D}}{{$p := $d.P}}{{$s := $p.Sailing}}{{$pb0 := $p.PrimaryBox}}
+{{$d := .D}}{{$p := $d.P}}{{$s := $p.Sailing}}{{$best := $p.BestFleetPlan}}{{$pb0 := $p.PrimaryBox}}
+<div class="vz">
+<div class="vz-main">
+ <aside class="vz-aside">
+  <section class="vz-card">
+   <div class="vz-hd"><span>LCL bookings · {{$s.Lane.Dest.Name}} · {{with $s.Vessel}}{{day .ETD}}{{else}}{{$s.Label}}{{end}}</span><span>{{$s.Label}}</span></div>
+   <div class="vz-lots">
+    {{range $p.All}}{{$l := .}}{{$out := and $best .OutOfBest}}
+    <div class="vz-lot {{if or $out .Reason}}out{{end}}" data-lot="{{.Booking.ID}}">
+     <span class="vz-sw" style="background:{{.Hue}}"></span>
+     <div>
+      <b><a href="/ops/bookings/{{.Booking.ID}}">{{.Booking.CompanyName}}</a></b>
+      <small><span class="vz-chip">{{.Booking.Category.Label}}</span>{{thousands .Booking.Kg}} kg · {{n1 .Booking.WM}} W/M{{if eq .Booking.Mode "coload"}} · co-load{{end}}</small>
+      {{if $out}}<small class="why">Out of best box: {{.OutOfBest}}</small>{{else if .Reason}}<small class="why">Unplaced: {{.Reason}}</small>{{end}}
+      {{if .PendingMove}}<small class="wait">Waiting for the shipper to answer: move to {{.PendingMove.TargetLabel}}</small>
+      {{else if and (not $d.Locked) $p.NextSailing .Rollable}}
+      <form method="post" action="/ops/bookings/{{.Booking.ID}}/roll" class="vz-inline" data-keep-scroll>{{template "csrf" $.CSRF}}<button class="vz-roll">Roll to {{with $p.NextSailing.Vessel}}{{day .ETD}}{{else}}{{$p.NextSailing.Label}}{{end}}</button></form>
+      {{end}}
+     </div>
+     <span class="n">{{n1 .Booking.CBM}} CBM</span>
+     {{if and (not $d.Locked) (eq .Booking.Mode "pool")}}
+     <form method="post" action="/ops/bookings/{{.Booking.ID}}/remove" class="vz-inline" data-confirm="Remove {{.Booking.CompanyName}}'s {{n1 .Booking.CBM}} CBM from this sailing? The booking is cancelled and the shipper told.">{{template "csrf" $.CSRF}}<button class="vz-x" aria-label="Remove {{.Booking.CompanyName}}">×</button></form>
+     {{else}}<span></span>{{end}}
+    </div>
+    {{else}}
+    <p class="vz-empty">No bookings on this lane yet.</p>
+    {{end}}
+   </div>
+   {{if $p.Held}}<p class="vz-note" style="padding:0 14px">{{len $p.Held}} booking(s) on a 15-minute hold, not counted yet.</p>{{end}}
+   {{if not $d.Locked}}
+   <form method="post" action="/ops/sailings/{{$s.ID}}/bookings" class="vz-form" novalidate>{{template "csrf" $.CSRF}}
+    <label class="full">Shipper<select name="company"><option value="">Choose a factory</option>{{range $d.Factories}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></label>
+    <label>CBM<input name="cbm" type="number" min="0.1" step="0.1" placeholder="3.5"></label>
+    <label>Gross kg<input name="kg" type="number" min="1" step="10" placeholder="600"></label>
+    <label class="full">Cargo category<select name="category">{{range rulesTable}}{{if ne (printf "%s" .) "dg"}}<option value="{{.}}">{{.Label}} · {{.Examples}}</option>{{end}}{{end}}</select></label>
+    <button class="vz-btn full">Add booking to this lane</button>
+   </form>
+   {{end}}
+  </section>
 
-<div class="chips" aria-label="Sailing summary">
-  <span class="chip"><svg class="i"><use href="#i-route"/></svg>{{$s.Lane.Short}}</span>
-  <span class="chip">{{$s.Label}}{{with $s.Vessel}} · {{.Label}}{{end}}</span>
-  {{if eq $s.Status "open"}}<span class="chip amber">Plan locks {{dt $s.PlanLockAt}} · in <span data-countdown="{{iso $s.PlanLockAt}}"></span></span>
-  {{else}}<span class="chip">{{$s.StatusLabel}}</span>{{end}}
-  <span class="chip"><b>{{$p.Bookings}}</b> booking{{if ne $p.Bookings 1}}s{{end}}</span>
-  <span class="chip"><b>{{n1 $p.RequestedCBM}}</b> CBM</span>
-  <span class="chip"><b>{{thousands $p.TotalKg}}</b> kg</span>
-  <span class="chip"><b>{{n1 $p.TotalWM}}</b> W/M</span>
-  <span class="chip muted">Co-load USD {{n0 $p.ColoadRate}}/CBM · stowage {{pct (mul $d.Stowage 100)}}</span>
-</div>
+  <section class="vz-card">
+   <div class="vz-hd"><span>Add a sailing on this lane</span></div>
+   <form method="post" action="/ops/lanes/{{$s.Lane.ID}}/sailings" class="vz-form" novalidate>{{template "csrf" $.CSRF}}
+    <label>Vessel<input name="vessel" type="text" placeholder="e.g. MV Indigo Star"></label>
+    <label>Voyage<input name="voyage" type="text" placeholder="418W"></label>
+    <label>Departure (ETD)<input name="etd" type="date" value="{{$d.DefaultETD}}"></label>
+    <label>CFS cut-off, days before<input name="cutoff" type="number" min="1" max="7" value="2"></label>
+    <button class="vz-btn full">Add sailing</button>
+   </form>
+  </section>
 
-{{if $d.Locked}}
-<div class="alert info" style="margin-bottom:16px"><div><b>This FCL is finalized ({{lower $s.StatusLabel}}).</b>
-  {{range $p.Boxes}}{{with .Tender}} <a href="/ops/tenders/{{.ID}}">{{.Ref}}</a> · {{.Status}} · {{.Bids}} bid(s).{{end}}{{end}}
-  {{if eq $s.Status "coload"}}Every lot goes with the co-load partner.{{end}}</div></div>
-{{else if and $p.Best $pb0}}{{$b := $p.Best}}{{$save := $p.Saving $b}}
-  {{if $p.Below}}
-  <div class="rec-banner warn">
-    <div class="rec-tag">Co-load or roll</div>
-    <div class="rec-body"><b>{{n1 $p.RequestedCBM}} CBM fills {{pct $p.PrimaryFill}} of a {{$pb0.Container.BoxCode}}, below the {{pct $p.Threshold}} own-box threshold.</b>
-      <span>Compare co-load, a smaller box or rolling to the next sailing before you plan an own box.</span></div>
-    <a class="btn" href="/ops/pools?year={{$s.Year}}&week={{$s.Week}}&s={{$s.ID}}">Decide on the pools board</a>
+  <section class="vz-card">
+   <div class="vz-hd"><span>Container options for this lane</span></div>
+   <div>
+    {{range $p.Fleet}}
+    <div class="vz-it">
+     <div><b>{{.Option.Spec.Code}}</b> <span class="vz-chip g-{{.Option.Grade}}">{{.Option.Grade.Label}}</span></div>
+     <span class="mono-n">{{usdSigned .Option.Cost}}</span>
+     <form method="post" action="/ops/lane-options/{{.Option.ID}}/remove" class="vz-inline" data-keep-scroll>{{template "csrf" $.CSRF}}<button class="vz-x" aria-label="Remove {{.Option.Spec.Code}} grade {{.Option.Grade}} option">×</button></form>
+    </div>
+    {{else}}
+    <p class="vz-empty">No container options. Add one below.</p>
+    {{end}}
+   </div>
+   <form method="post" action="/ops/lanes/{{$s.Lane.ID}}/options" class="vz-form" novalidate data-keep-scroll>{{template "csrf" $.CSRF}}
+    <label>Container type<select name="box">{{range $d.Specs}}<option value="{{.Code}}">{{.Code}} · {{.Name}} · {{n1 .InternalCBM}} CBM</option>{{end}}</select></label>
+    <label>Container grade<select name="grade">{{range grades}}<option value="{{.}}">{{.Label}}</option>{{end}}</select></label>
+    <label class="full">All-in box cost, USD (freight, THC, CFS stuffing)<input name="cost" type="number" step="10" value="2200"></label>
+    <button class="vz-btn full">Add container option</button>
+   </form>
+  </section>
+
+  <section class="vz-card">
+   <div class="vz-hd"><span>Loading and money</span></div>
+   <form method="post" action="/ops/lanes/{{$s.Lane.ID}}/money" class="vz-set" data-keep-scroll>{{template "csrf" $.CSRF}}
+    <label>Usable space (stowage factor): <b data-range-out>{{printf "%.0f" (mul $p.Stowage 100)}}%</b><input name="eff" type="range" min="70" max="95" step="1" value="{{printf "%.0f" (mul $p.Stowage 100)}}" data-autosubmit></label>
+    <div class="row"><span>Selling price per W/M (USD)</span><input name="sell" type="number" step="1" value="{{printf "%g" $p.Sell}}" data-autosubmit></div>
+    <div class="row"><span>Handling cost per W/M</span><input name="hand" type="number" step="1" value="{{printf "%g" $p.Handling}}" data-autosubmit></div>
+    <p class="vz-note" style="margin:0">The selling price is also the estimate factories see when they book this lane. Usable space applies to every lane.</p>
+   </form>
+  </section>
+
+  <section class="vz-card" id="finalize">
+   <div class="vz-hd"><span>Finalize FCL · {{$s.Label}}</span>{{if $d.Locked}}<span class="vz-badge b-ok">{{$s.StatusLabel}}</span>{{end}}</div>
+   <form method="post" action="/ops/sailings/{{$s.ID}}/vessel" class="vz-vessels" data-keep-scroll>{{template "csrf" $.CSRF}}
+    {{range $s.Vessels}}
+    <label class="vz-radio {{if eq .ID $s.Vessel.ID}}on{{end}}">
+     <input type="radio" name="vessel" value="{{.ID}}" {{if eq .ID $s.Vessel.ID}}checked{{end}} {{if $d.Locked}}disabled{{end}} data-autosubmit>
+     <span><b>{{.Name}} {{.Voyage}}</b> · {{.ServiceLabel}}{{if and (eq .ID $s.Vessel.ID) (not .IsDefault)}} <span class="vz-chip">Override</span>{{end}}
+      <small>ETD {{day .ETD}} · ETA {{day .ETA}} · {{.TransitDays}} days{{if .Via}} · via {{.Via}}{{end}}{{if gt .ExtraPerBox 0.0}} · +USD {{usd0 .ExtraPerBox}} per box{{end}}</small></span>
+    </label>
+    {{end}}
+   </form>
+   <ul class="checks vz-checks">
+    {{range $p.Blockers}}<li class="no" data-blocker>{{.}}</li>{{end}}
+    {{range $p.Warnings}}<li class="bad">{{.}}</li>{{end}}
+    {{if and (not $p.Blockers) (not $p.Warnings)}}<li>Load and weight checks passed</li>{{end}}
+   </ul>
+   {{if not $d.Locked}}
+   <form method="post" action="/ops/sailings/{{$s.ID}}/lock" class="vz-pad" data-confirm="Finalize the FCL and open bidding? New bookings go to the next sailing, and shippers can't change these bookings after this.">{{template "csrf" $.CSRF}}
+    <button class="vz-btn block" {{if not $p.CanLock}}disabled{{end}}>{{template "icon-lock"}} Finalize FCL and open bidding</button>
+   </form>
+   {{else}}
+   <div class="vz-pad">{{range $p.Boxes}}{{with .Tender}}<a class="vz-ghost" href="/ops/tenders/{{.ID}}">{{.Ref}} · {{.Status}} · {{.Bids}} bid(s)</a> {{end}}{{end}}</div>
+   {{end}}
+  </section>
+ </aside>
+
+ <section data-fig-wrap>
+  {{if $d.Locked}}
+  <div class="vz-rec">
+   <div class="k">FCL finalized · {{sailLabel $s}}</div>
+   <h2>{{with $pb0}}One {{.Container.BoxCode}} grade {{.Container.Grade}}: {{pct .Box.FillPct}} full, {{len .Lots}} lots{{else}}Every lot goes with the co-load partner{{end}}</h2>
+   <p>{{$s.StatusLabel}}. {{range $p.Boxes}}{{with .Tender}}Tender {{.Ref}} is {{.Status}} with {{.Bids}} bid(s). {{end}}{{end}}Follow it on the Bids page.</p>
   </div>
-  {{else if $p.SwitchTo}}
-  <div class="rec-banner {{if gt $save 0.0}}good{{else}}warn{{end}}">
-    <div class="rec-tag">Switch to {{$b.Spec.Code}}</div>
-    <div class="rec-body"><b>Book one {{$b.Spec.Code}} grade {{$b.Grade}}: {{$b.LotsFit}} of {{len $p.All}} lots, {{pct $b.FillPct}} full{{if gt $save 0.0}}, saves USD {{thousands $save}} vs co-load{{end}}.</b>
-      <span>Container 1 is a {{$pb0.Container.BoxCode}} now. Lots that don't fit can be moved or co-loaded.</span></div>
-    <form method="post" action="/ops/containers/{{$pb0.Container.ID}}" data-keep-scroll>{{template "csrf" $.CSRF}}<input type="hidden" name="box" value="{{$b.Spec.Code}}"><input type="hidden" name="grade" value="{{$pb0.Container.Grade}}"><button class="btn primary">Switch Container 1 to {{$b.Spec.Code}}</button></form>
-  </div>
-  {{else if gt $save 0.0}}
-  <div class="rec-banner good">
-    <div class="rec-tag">Finalize FCL</div>
-    <div class="rec-body"><b>{{$b.Spec.Code}} grade {{$b.Grade}} is the best fit: {{pct $b.FillPct}} full, saves USD {{thousands $save}} vs co-load.</b>
-      <span>{{if $p.CanLock}}Every check passes. Finalize to open sealed bidding to forwarders.{{else}}Clear the checklist, then finalize to open bidding.{{end}}</span></div>
-    <a class="btn primary" href="#finalize">{{if $p.CanLock}}Finalize{{else}}See checklist{{end}}</a>
+  {{else if not $p.All}}
+  <div class="vz-rec warn"><div class="k">No bookings on this lane</div><h2>Add LCL bookings to start filling a container</h2><p>Pick another port pair, or add a booking on the left.</p></div>
+  {{else if not $p.Fleet}}
+  <div class="vz-rec warn"><div class="k">No container options</div><h2>Add a container type and grade to plan this lane</h2><p>The engine only loads lots a container is allowed to carry.</p></div>
+  {{else if $best}}{{$out := len $best.Rej}}
+  <div class="vz-rec">
+   <div class="k">{{if $p.Converted}}FCL planned{{else}}Convert to FCL{{end}} · {{sailLabel $s}} · decide before CFS cut-off {{cutTxt $s.CFSCutoff}}</div>
+   <h2>{{if $p.Converted}}Booked one{{else}}Book one{{end}} {{$best.Option.Spec.Code}} grade {{$best.Option.Grade}} on {{with $s.Vessel}}{{day .ETD}}{{end}}'s vessel: {{pct100 $best.Fill}} full, margin {{usdSigned $best.Margin}}</h2>
+   <p>{{len $best.Fit}} of {{len $p.All}} lots load ({{n1 $best.CBM}} of {{n1 $best.Usable}} usable CBM, {{n1 (sub $best.Usable $best.CBM)}} CBM free to sell). {{if $out}}{{$out}} lot{{if gt $out 1}}s{{end}} can't go in this box: roll, send to co-load or a second box (see reasons).{{else}}Every lot on this lane fits.{{end}}</p>
+   <div class="vz-rec-act">
+    {{if $p.Converted}}
+     {{if $p.CanLock}}<form method="post" action="/ops/sailings/{{$s.ID}}/lock" data-confirm="Finalize the FCL and open bidding? New bookings go to the next sailing, and shippers can't change these bookings after this.">{{template "csrf" $.CSRF}}<button class="vz-btn">Finalize FCL and open bidding</button></form>
+     {{else}}<a class="vz-ghost" href="#finalize">{{len $p.Blockers}} thing{{if gt (len $p.Blockers) 1}}s{{end}} to clear before finalizing</a>{{end}}
+    {{else}}
+     <form method="post" action="/ops/sailings/{{$s.ID}}/convert" data-keep-scroll>{{template "csrf" $.CSRF}}<input type="hidden" name="option" value="{{$best.Option.ID}}"><button class="vz-btn">Convert: book this {{$best.Option.Spec.Code}}</button></form>
+    {{end}}
+   </div>
   </div>
   {{else}}
-  <div class="rec-banner warn">
-    <div class="rec-tag">Below break-even</div>
-    <div class="rec-body"><b>A {{$b.Spec.Code}} carrying {{n1 $b.PlacedCBM}} CBM costs USD {{thousands (mul $save -1.0)}} more than co-load.</b>
-      <span>Break-even is {{n1 ($p.BreakEvenFor $b.Spec.Code)}} CBM. Fill more space or co-load this sailing.</span></div>
-    <a class="btn" href="/ops/pools?year={{$s.Year}}&week={{$s.Week}}&s={{$s.ID}}">Decide on the pools board</a>
+  <div class="vz-rec warn">
+   <div class="k">Stay LCL · co-load</div>
+   <h2>No container option breaks even on this lane yet</h2>
+   <p>{{n1 $p.RequestedCBM}} CBM booked. Keep selling space before the cut-off, add a cheaper container option, or co-load with a partner.</p>
+   <div class="vz-rec-act"><a class="vz-ghost" href="/ops/pools?year={{$s.Year}}&week={{$s.Week}}&s={{$s.ID}}">Co-load or roll on the pools board</a></div>
   </div>
   {{end}}
-{{end}}
 
-<div class="plan-grid">
-<!-- Left: requests, moves, finalize, vessel -->
-<div class="stack">
-  <section class="card flush">
-    <div class="card-head pad"><h2>Shipper requests</h2><span class="muted small">Booking order</span></div>
-    <ul class="lot-list">
+  <div class="vz-legend">
+   <span><svg width="26" height="12" aria-hidden="true"><line class="bx-be" x1="0" y1="6" x2="26" y2="6"/></svg>Break-even fill</span>
+   <span><svg width="26" height="12" aria-hidden="true"><rect class="bx-free" x="1" y="1" width="24" height="10"/></svg>Free space to sell</span>
+   <span><span class="vz-chip g-A">A</span>Food grade</span><span><span class="vz-chip g-B">B</span>General</span><span><span class="vz-chip g-C">C</span>Heavy duty</span>
+  </div>
+
+  {{range $p.Fleet}}{{$f := .}}{{$st := .Status}}
+  <article class="vz-box {{if .Best}}best{{end}}">
+   <div class="vz-bh">
+    <div><b>{{.Option.Spec.Code}}</b><small>{{.Option.Spec.Name}} · {{dims .Option.Spec}} · {{n1 .Nominal}} CBM · {{usdSigned .Option.Cost}}</small> <span class="vz-chip g-{{.Option.Grade}}">{{.Option.Grade.Label}}</span>{{with $pb0}}{{if and (eq .Container.BoxCode $f.Option.Spec.Code) (eq .Container.Grade $f.Option.Grade)}}<span class="vz-chip on">Container 1</span>{{end}}{{end}}</div>
+    <span class="vz-badge {{index $st 1}}">{{index $st 0}}</span>
+   </div>
+   {{fleetFig . $p}}
+   <div class="vz-stats">
+    <div><small>Loaded</small><span>{{n1 .CBM}} CBM</span><div class="vz-meter"><i style="width:{{pctw (mul .Fill 100)}};background:var(--vz-brand)"></i></div></div>
+    <div><small>Fill of usable</small><span>{{pct100 .Fill}}</span></div>
+    <div><small>Weight</small><span>{{printf "%.1f" (div .Kg 1000)}} / {{printf "%g" (div .Option.Spec.PayloadKg 1000)}} t</span><div class="vz-meter"><i style="width:{{pctw (mul .WFill 100)}};background:var(--vz-warn)"></i></div></div>
+    <div><small>Free to sell</small><span>{{n1 (sub .Usable .CBM)}} CBM</span></div>
+    <div><small>Margin</small><span class="{{if gt .Margin 0.0}}vz-pos{{else}}vz-neg{{end}}">{{usdSigned .Margin}}</span></div>
+   </div>
+   {{if .Rej}}<div class="vz-rej">{{range $i, $g := .RejGroups}}{{if $i}}<br>{{end}}<b>Not loaded, {{$g.Why}}:</b> {{range $j, $l := $g.Lots}}{{if $j}}, {{end}}{{$l.Name}}{{end}}{{end}}</div>{{end}}
+   {{if and (not $d.Locked) .Fit}}{{if not (and $p.Converted .Best)}}
+   <div class="vz-act"><form method="post" action="/ops/sailings/{{$s.ID}}/convert" data-keep-scroll>{{template "csrf" $.CSRF}}<input type="hidden" name="option" value="{{.Option.ID}}"><button class="vz-ghost">{{if .Best}}Convert: book this box{{else}}Use this box instead{{end}}</button></form></div>
+   {{end}}{{end}}
+  </article>
+  {{end}}
+  <p class="vz-note">Internal dimensions are typical values; payloads are practical limits including road weight. Check each line's equipment specs.</p>
+
+  <details class="vz-card vz-manual" id="containers" data-remember {{if or $p.Unplaced $d.OpenManual}}open{{end}}>
+   <summary class="vz-hd"><span>Containers on this sailing · manual placement</span><span>{{len $p.Boxes}} container{{if ne (len $p.Boxes) 1}}s{{end}} · {{n1 $p.UsableCBM}} usable CBM{{if $p.Unplaced}} · <b class="vz-neg">{{len $p.Unplaced}} unplaced</b>{{end}}</span></summary>
+   <div class="vz-manual-in" data-fig-wrap>
+    {{range $p.Boxes}}{{$pb := .}}
+    <article class="vz-box">
+     <div class="vz-bh">
+      <div><b>Container {{.Container.Seq}} · {{.Container.BoxCode}}</b><small>{{.Container.Spec.Name}} · {{dims .Container.Spec}} · {{n1 .Box.UsedCBM}} / {{n1 .Box.Usable}} CBM · {{thousands .Box.UsedKg}} kg</small> <span class="vz-chip g-{{.Container.Grade}}">{{.Container.Grade.Label}}</span></div>
+      {{if not $d.Locked}}
+      <div class="vz-ctl">
+       <form method="post" action="/ops/containers/{{.Container.ID}}" class="vz-inline" data-keep-scroll>{{template "csrf" $.CSRF}}
+        <select name="box" data-autosubmit aria-label="Container type">{{range $d.Specs}}<option value="{{.Code}}" {{if eq .Code $pb.Container.BoxCode}}selected{{end}}>{{.Code}}</option>{{end}}</select>
+        <select name="grade" data-autosubmit aria-label="Grade">{{range grades}}<option value="{{.}}" {{if eq . $pb.Container.Grade}}selected{{end}}>Grade {{.}}</option>{{end}}</select>
+       </form>
+       {{if gt (len $p.Boxes) 1}}<form method="post" action="/ops/containers/{{.Container.ID}}/remove" class="vz-inline" data-confirm="Remove Container {{.Container.Seq}}? Its lots will wait to be placed." data-keep-scroll>{{template "csrf" $.CSRF}}<button class="vz-ghost danger">Remove</button></form>{{end}}
+      </div>
+      {{end}}
+     </div>
+     {{boxFig . $p}}
+     <div class="vz-rej vz-checkline">{{range $i, $c := .Box.Checks}}{{if $i}} · {{end}}<span class="{{if not .OK}}vz-neg{{end}}">{{if .OK}}✓{{else}}✕{{end}} {{.Label}}</span>{{end}}</div>
+    </article>
+    {{end}}
+
+    <div class="vz-scroll vz-place">
+     <table>
+      <thead><tr><th>Lot</th><th class="right">CBM</th><th>Placed in</th><th>Documents</th><th></th></tr></thead>
+      <tbody>
       {{range $p.All}}{{$l := .}}
-      <li class="lot-row {{if .Reason}}bad{{end}}" data-lot="{{.Booking.ID}}">
-        <span class="swatch lot-{{.Color}}">{{.Label}}</span>
-        <div class="lot-main">
-          <div class="row between" style="gap:6px;flex-wrap:nowrap">
-            <a class="lot-name" href="/ops/bookings/{{.Booking.ID}}">{{.Booking.CompanyName}}</a>
-            <b class="num">{{n1 .Booking.CBM}}<span class="faint small"> CBM</span></b>
-          </div>
-          <div class="lot-meta"><span class="cat-chip cat-{{.Booking.Category}}">{{.Booking.Category.Short}}</span><span class="mono faint">{{.Booking.Ref}}</span><span>{{thousands .Booking.Kg}} kg</span><span>{{n1 .Booking.WM}} W/M</span></div>
-          {{if .Reason}}<div class="lot-why">Unplaced: {{.Reason}}{{if .PendingMove}} · waiting for the shipper's answer{{end}}</div>
-          {{else if .OutOfBest}}<div class="lot-why soft">Out of best box: {{.OutOfBest}}</div>{{end}}
-          <div class="lot-ctl">
-            {{if eq .Booking.Mode "coload"}}<span class="pill amber">Co-load</span>
-            {{else if $d.Locked}}{{if .Booking.ContainerID}}<span class="pill">Container</span>{{else}}<span class="pill amber">Unplaced</span>{{end}}
-            {{else}}
-            <form method="post" action="/ops/bookings/{{.Booking.ID}}/place" data-keep-scroll>{{template "csrf" $.CSRF}}
-              <select name="container" class="input-sm place" data-autosubmit aria-label="Container for {{.Booking.CompanyName}}">
-                <option value="0" {{if not .Booking.ContainerID}}selected{{end}}>Unplaced</option>
-                {{range $p.Boxes}}<option value="{{.Container.ID}}" {{if eq .Container.ID $l.Booking.ContainerID}}selected{{end}}>Container {{.Container.Seq}} · {{.Container.BoxCode}}</option>{{end}}
-              </select>
-            </form>
-            {{end}}
-            {{if .MissingDocs}}<span class="pill amber plain" title="{{join .MissingDocs ", "}} missing">{{len .MissingDocs}} doc{{if gt (len .MissingDocs) 1}}s{{end}} missing</span>{{else}}<span class="pill green plain">Docs complete</span>{{end}}
-            {{if and (not $d.Locked) (eq .Booking.Mode "pool")}}<a class="btn sm ghost" href="?lot={{.Booking.ID}}#move">Move</a>{{end}}
-          </div>
-        </div>
-      </li>
-      {{else}}
-      <li>{{template "empty" (dict "Title" "No requests yet" "Body" "Bookings for this sailing appear here as factories book.")}}</li>
+      <tr data-lot="{{.Booking.ID}}">
+       <td><span class="vz-sw" style="background:{{.Hue}}"></span> {{.Booking.CompanyName}}{{if .Reason}}<small class="vz-neg" style="display:block">Unplaced: {{.Reason}}</small>{{end}}</td>
+       <td class="right mono-n">{{n1 .Booking.CBM}}</td>
+       <td>{{if eq .Booking.Mode "coload"}}Co-load{{else if $d.Locked}}{{if .Booking.ContainerID}}Container{{else}}Unplaced{{end}}{{else}}
+        <form method="post" action="/ops/bookings/{{.Booking.ID}}/place" class="vz-inline" data-keep-scroll>{{template "csrf" $.CSRF}}
+         <select name="container" class="place" data-autosubmit aria-label="Container for {{.Booking.CompanyName}}">
+          <option value="0" {{if not .Booking.ContainerID}}selected{{end}}>Unplaced</option>
+          {{range $p.Boxes}}<option value="{{.Container.ID}}" {{if eq .Container.ID $l.Booking.ContainerID}}selected{{end}}>Container {{.Container.Seq}} · {{.Container.BoxCode}}</option>{{end}}
+         </select></form>{{end}}</td>
+       <td>{{if .MissingDocs}}<span class="vz-neg">{{join .MissingDocs ", "}} missing</span>{{else}}<span class="vz-pos">Complete</span>{{end}}</td>
+       <td class="right">{{if and (not $d.Locked) (eq .Booking.Mode "pool")}}<a class="vz-ghost" href="?lot={{.Booking.ID}}#move">Move</a>{{end}}</td>
+      </tr>
       {{end}}
-    </ul>
-    {{if $p.Held}}<p class="muted small" style="padding:0 16px 14px;margin:0">{{len $p.Held}} booking(s) on a 15-minute hold, not counted yet.</p>{{end}}
-  </section>
-
-  {{if not $d.Locked}}{{range $p.Unplaced}}
-  <div class="card warn tight">
-    <b>Overflow: {{.Booking.CompanyName}} · {{n1 .Booking.CBM}} CBM</b>
-    <div class="small" style="margin:2px 0 8px">{{title .Reason}}{{if .PendingMove}} · <span class="amber">waiting for the shipper to answer a move request</span>{{end}}</div>
-    <div class="row">
-      {{if $p.NextSailing}}<form method="post" action="/ops/bookings/{{.Booking.ID}}/move" data-keep-scroll>{{template "csrf" $.CSRF}}<input type="hidden" name="target" value="next_week"><input type="hidden" name="reason" value="Week's container is full"><input type="hidden" name="ask" value="on"><button class="btn sm">Ask to move to {{$p.NextSailing.Label}}</button></form>{{end}}
-      <a class="btn sm ghost" href="?lot={{.Booking.ID}}#move">More options</a>
+      </tbody>
+     </table>
     </div>
-  </div>
-  {{end}}{{end}}
 
-  {{if and (not $d.Locked) $d.MoveLot}}{{$m := $d.MoveLot}}
-  <section class="card accent" id="move">
-    <div class="card-band eyebrow">Move request · {{$m.Booking.CompanyName}}</div>
-    <form method="post" action="/ops/bookings/{{$m.Booking.ID}}/move">{{template "csrf" $.CSRF}}
-      <div class="field"><label>Move to</label>
-        {{if $p.NextSailing}}<label class="check" style="margin-bottom:8px"><input type="radio" name="target" value="next_week" checked> <span>{{$p.NextSailing.Label}}{{with $d.NextPlan}}{{with .PrimaryBox}} · Container 1 · {{n1 .Box.UsedCBM}} → {{n1 (addf .Box.UsedCBM $m.Booking.CBM)}} CBM{{end}}{{end}}</span></label>{{end}}
-        <label class="check" style="margin-bottom:8px"><input type="radio" name="target" value="extra_box" {{if not $p.NextSailing}}checked{{end}}> <span>{{$s.Label}} · new extra
-          <select name="box" class="input-sm" style="width:auto;display:inline-block;margin-left:4px" aria-label="Extra container type">{{range $d.Specs}}<option value="{{.Code}}" {{if eq .Code "20GP"}}selected{{end}}>{{.Code}}</option>{{end}}</select></span></label>
-        <label class="check"><input type="radio" name="target" value="coload"> <span>Co-load partner · USD {{n0 $p.ColoadRate}}/CBM</span></label>
-      </div>
-      <div class="field"><label for="reason">Reason shown to the shipper</label>
-        <select id="reason" name="reason">{{range moveReasons}}<option>{{.}}</option>{{end}}</select></div>
-      <label class="check" style="margin-bottom:12px"><input type="checkbox" name="ask" checked> Notify shipper and ask to accept</label>
-      <p class="muted small">The cost cap shown at booking stays the same. If the shipper declines, the lot goes to a co-load partner on {{$s.Label}}.</p>
-      <button class="btn primary block">Move {{n1 $m.Booking.CBM}} CBM</button>
-    </form>
-  </section>
-  {{end}}
-
-  <section class="card" id="finalize">
-    <h3 style="margin-bottom:8px">Ready for forwarder bidding?</h3>
-    <ul class="checks">
-      <li class="{{if not $s.Vessel}}no{{end}}">Vessel chosen{{with $s.Vessel}}: {{.Label}}, {{.ServiceLabel}}{{end}}</li>
-      {{range $p.Blockers}}<li class="no" data-blocker>{{.}}</li>{{end}}
-      {{range $p.Warnings}}<li class="bad">{{.}}</li>{{end}}
-      {{if and (not $p.Blockers) (not $p.Warnings)}}<li>Load and weight checks passed</li>{{end}}
-    </ul>
     {{if not $d.Locked}}
-    <form method="post" action="/ops/sailings/{{$s.ID}}/lock" data-confirm="Finalize the FCL and open bidding? New bookings go to the next sailing, and shippers can't change these bookings after this.">{{template "csrf" $.CSRF}}
-      <button class="btn primary block" style="margin-top:12px" {{if not $p.CanLock}}disabled{{end}}>{{template "icon-lock"}} Finalize FCL</button>
-    </form>
-    <p class="lock-note">Locks the pool and opens a sealed tender to forwarders on this lane.</p>
-    {{end}}
-  </section>
-
-  <section class="card">
-    <h3 style="margin-bottom:10px">Vessel for {{$s.Label}}</h3>
-    <form method="post" action="/ops/sailings/{{$s.ID}}/vessel" class="stack-sm" data-keep-scroll>
-      {{template "csrf" $.CSRF}}
-      {{range $s.Vessels}}
-      <label class="radio-card {{if eq .ID $s.Vessel.ID}}on{{end}}">
-        <input type="radio" name="vessel" value="{{.ID}}" {{if eq .ID $s.Vessel.ID}}checked{{end}} {{if $d.Locked}}disabled{{end}} data-autosubmit>
-        <span><b>{{.Label}} · {{.ServiceLabel}}</b>{{if and (eq .ID $s.Vessel.ID) (not .IsDefault)}} <span class="pill solid" style="font-size:10px">OVERRIDE</span>{{end}}
-          <span class="muted small" style="display:block">ETD {{day .ETD}} · ETA {{day .ETA}} · {{.TransitDays}} days{{if .Via}} · via {{.Via}}{{end}}{{if gt .ExtraPerBox 0.0}} · est. +USD {{usd0 .ExtraPerBox}} per box{{end}}</span></span>
-      </label>
-      {{end}}
-    </form>
-  </section>
-</div>
-
-<!-- Right: containers and options -->
-<div class="stack">
-  <section>
-    <div class="section-head"><h2>Containers on this sailing</h2><span class="muted small">Requests {{n1 $p.RequestedCBM}} CBM · usable {{n1 $p.UsableCBM}} CBM</span></div>
-    <div class="stack">
-    {{range $p.Boxes}}{{$pb := .}}{{$bd := $p.BoxBadge .}}{{$save := $p.BoxSaving .}}
-    <article class="box-card">
-      <header class="box-head">
-        <div>
-          <div class="box-title">Container {{.Container.Seq}} · {{.Container.BoxCode}} <span class="muted">{{.Container.Spec.Name}}</span> <span class="grade-chip">Grade {{.Container.Grade}}</span></div>
-          <div class="muted small">{{dims .Container.Spec}} · {{n1 .Container.Spec.InternalCBM}} CBM inside · expected bid USD {{usd0 (index $s.Lane.Rates .Container.BoxCode)}}</div>
-        </div>
-        <span class="pill {{$bd.Class}}">{{$bd.Label}}</span>
-      </header>
-      {{box3d . $p}}
-      <div class="metrics">
-        <div><span>Loaded</span><b>{{n1 .Box.UsedCBM}} <small>/ {{n1 .Box.Usable}} CBM</small></b><span class="meter slim"><span style="width:{{pctw .Box.FillPct}}"></span></span></div>
-        <div><span>Fill of usable</span><b>{{pct .Box.FillPct}}</b></div>
-        <div><span>Weight</span><b>{{thousands .Box.UsedKg}} <small>/ {{thousands .Container.Spec.PayloadKg}} kg</small></b><span class="meter slim {{if gt .Box.UsedKg .Container.Spec.PayloadKg}}red{{end}}"><span style="width:{{pctw (mul (div .Box.UsedKg .Container.Spec.PayloadKg) 100)}}"></span></span></div>
-        <div><span>Free to sell</span><b>{{n1 .Box.FreeCBM}} <small>CBM</small></b></div>
-        <div><span>vs co-load</span><b class="{{if gt $save 0.0}}green{{else}}amber{{end}}">{{if gt $save 0.0}}saves USD {{thousands $save}}{{else}}USD {{thousands (mul $save -1.0)}} more{{end}}</b></div>
-      </div>
-      <div class="box-foot">
-        <ul class="checks row" style="gap:2px 16px">{{range .Box.Checks}}<li class="{{if not .OK}}no{{end}}">{{.Label}}</li>{{end}}</ul>
-        {{if not $d.Locked}}
-        <div class="row">
-          <form method="post" action="/ops/containers/{{.Container.ID}}" class="row" data-keep-scroll>{{template "csrf" $.CSRF}}
-            <select name="box" class="input-sm" style="width:auto" data-autosubmit aria-label="Container type">{{range $d.Specs}}<option value="{{.Code}}" {{if eq .Code $pb.Container.BoxCode}}selected{{end}}>{{.Code}}</option>{{end}}</select>
-            <select name="grade" class="input-sm" style="width:auto" data-autosubmit aria-label="Grade">{{range grades}}<option value="{{.}}" {{if eq . $pb.Container.Grade}}selected{{end}}>Grade {{.}}</option>{{end}}</select>
-          </form>
-          {{if gt (len $p.Boxes) 1}}<form method="post" action="/ops/containers/{{.Container.ID}}/remove" data-confirm="Remove Container {{.Container.Seq}}? Its lots will wait to be placed." data-keep-scroll>{{template "csrf" $.CSRF}}<button class="btn sm danger">Remove</button></form>{{end}}
-        </div>
-        {{else}}{{with .Tender}}<a class="btn sm" href="/ops/tenders/{{.ID}}">{{.Ref}} · {{.Bids}} bid(s)</a>{{end}}{{end}}
-      </div>
-    </article>
-    {{else}}
-    <div class="card">{{template "empty" (dict "Title" "No container yet" "Body" "Add a container to start placing lots.")}}</div>
-    {{end}}
+    <div class="vz-act" style="border:0">
+     <form method="post" action="/ops/sailings/{{$s.ID}}/containers" class="vz-inline" data-keep-scroll>{{template "csrf" $.CSRF}}
+      <select name="box" aria-label="New container type">{{range $d.Specs}}<option value="{{.Code}}">{{.Code}}</option>{{end}}</select>
+      <select name="grade" aria-label="New container grade">{{range grades}}<option value="{{.}}" {{if eq (printf "%s" .) "B"}}selected{{end}}>Grade {{.}}</option>{{end}}</select>
+      <button class="vz-ghost">+ Add a second container</button>
+     </form>
+     {{if $p.Unplaced}}<form method="post" action="/ops/sailings/{{$s.ID}}/autoplace" class="vz-inline" data-keep-scroll>{{template "csrf" $.CSRF}}<button class="vz-ghost">Auto-place waiting lots</button></form>{{end}}
     </div>
-    {{if not $d.Locked}}
-    <div class="row" style="margin-top:12px">
-      <form method="post" action="/ops/sailings/{{$s.ID}}/containers" class="row" data-keep-scroll>{{template "csrf" $.CSRF}}
-        <select name="box" class="input-sm" style="width:auto" aria-label="New container type">{{range $d.Specs}}<option value="{{.Code}}">{{.Code}}</option>{{end}}</select>
-        <select name="grade" class="input-sm" style="width:auto" aria-label="New container grade">{{range grades}}<option value="{{.}}" {{if eq (printf "%s" .) "B"}}selected{{end}}>Grade {{.}}</option>{{end}}</select>
-        <button class="btn sm dashed">+ Add container</button>
-      </form>
-      {{if $p.Unplaced}}<form method="post" action="/ops/sailings/{{$s.ID}}/autoplace" data-keep-scroll>{{template "csrf" $.CSRF}}<button class="btn sm">Auto-place waiting lots</button></form>{{end}}
+
+    {{with $d.MoveLot}}{{$m := .}}
+    <div class="vz-move" id="move">
+     <div class="vz-hd"><span>Move {{$m.Booking.CompanyName}} · {{n1 $m.Booking.CBM}} CBM</span></div>
+     <form method="post" action="/ops/bookings/{{$m.Booking.ID}}/move" class="vz-form">{{template "csrf" $.CSRF}}
+      <div class="full vz-radios">
+       {{if $p.NextSailing}}<label class="vz-check"><input type="radio" name="target" value="next_week" checked> <span>Next sailing · {{sailLabel $p.NextSailing}}{{with $d.NextPlan}}{{with .PrimaryBox}} · Container 1 {{n1 .Box.UsedCBM}} → {{n1 (addf .Box.UsedCBM $m.Booking.CBM)}} CBM{{end}}{{end}}</span></label>{{end}}
+       <label class="vz-check"><input type="radio" name="target" value="extra_box" {{if not $p.NextSailing}}checked{{end}}> <span>A new extra
+        <select name="box" aria-label="Extra container type" class="vz-mini">{{range $d.Specs}}<option value="{{.Code}}" {{if eq .Code "20GP"}}selected{{end}}>{{.Code}}</option>{{end}}</select> on this sailing</span></label>
+       <label class="vz-check"><input type="radio" name="target" value="coload"> <span>Co-load partner · USD {{n0 $p.ColoadRate}}/CBM</span></label>
+      </div>
+      <label class="full">Reason shown to the shipper<select name="reason">{{range moveReasons}}<option>{{.}}</option>{{end}}</select></label>
+      <label class="vz-check full"><input type="checkbox" name="ask" checked> <span>Notify the shipper and ask them to accept</span></label>
+      <p class="vz-note full" style="margin:0">The cost cap shown at booking stays the same. If the shipper declines, the lot goes to a co-load partner.</p>
+      <button class="vz-btn full">Move {{n1 $m.Booking.CBM}} CBM</button>
+     </form>
     </div>
     {{end}}
-  </section>
-
-  {{if and (not $d.Locked) $p.Options}}
-  <section>
-    <div class="section-head"><h2>Compare container options</h2><span class="muted small">One box of each type, grade {{(index $p.Options 0).Grade}}, filled in booking order</span></div>
-    <div class="option-grid">
-    {{range $p.Options}}{{$o := .}}{{$bd := $p.OptionBadge .}}{{$save := $p.Saving .}}
-    <article class="box-card {{if .Best}}best{{end}}">
-      <header class="box-head">
-        <div>
-          <div class="box-title">{{.Spec.Code}} <span class="muted">{{.Spec.Name}}</span> <span class="grade-chip">Grade {{.Grade}}</span></div>
-          <div class="muted small">{{dims .Spec}} · {{n1 .Usable}} CBM usable · USD {{usd0 .ExpectedBid}}</div>
-        </div>
-        <span class="pill {{$bd.Class}}">{{$bd.Label}}</span>
-      </header>
-      {{box3dOption . $p}}
-      <div class="metrics">
-        <div><span>Loaded</span><b>{{.LotsFit}} lots · {{n1 .PlacedCBM}} <small>CBM</small></b><span class="meter slim"><span style="width:{{pctw .FillPct}}"></span></span></div>
-        <div><span>Fill</span><b>{{pct .FillPct}}</b></div>
-        <div><span>Weight</span><b>{{thousands .LoadedKg}} <small>kg</small></b><span class="meter slim"><span style="width:{{pctw (mul (div .LoadedKg .Spec.PayloadKg) 100)}}"></span></span></div>
-        <div><span>Free to sell</span><b>{{n1 (sub .Usable .PlacedCBM)}} <small>CBM</small></b></div>
-        <div><span>Freight</span><b>{{if gt .PerCBM 0.0}}USD {{n1 .PerCBM}}<small>/CBM</small>{{else}}–{{end}}</b></div>
-        <div><span>vs co-load</span><b class="{{if gt $save 0.0}}green{{else}}amber{{end}}">{{if gt $save 0.0}}saves USD {{thousands $save}}{{else}}USD {{thousands (mul $save -1.0)}} more{{end}}</b></div>
-      </div>
-      {{range unplacedGroups .Unplaced}}
-      <div class="notloaded"><b>Not loaded · {{.Reason}}:</b> {{range $i, $l := .Lots}}{{if $i}}, {{end}}<span class="swatch-dot lot-{{index $p.ColorOf $l.ID}}"></span>{{$l.Label}} {{$l.Name}}{{end}}</div>
-      {{end}}
-      <div class="box-foot">
-        <span class="muted small">{{with $p.BreakEvenFor $o.Spec.Code}}Break-even {{n1 .}} CBM{{end}}</span>
-        {{with $pb0}}{{if eq .Container.BoxCode $o.Spec.Code}}<span class="pill blue">Container 1 uses this</span>{{else}}<form method="post" action="/ops/containers/{{.Container.ID}}" class="inline-form" data-keep-scroll>{{template "csrf" $.CSRF}}<input type="hidden" name="box" value="{{$o.Spec.Code}}"><button class="btn sm {{if $o.Best}}primary{{end}}">Use {{$o.Spec.Code}} for Container 1</button></form>{{end}}{{end}}
-      </div>
-    </article>
     {{end}}
-    </div>
-  </section>
-  {{end}}
-</div>
+   </div>
+  </details>
+ </section>
 </div>
 
-<section class="card flush" style="margin-top:20px">
-  <div class="card-head pad"><h2>Loading rules</h2><span class="muted small">Checked on every change · usable space is {{pct (mul $d.Stowage 100)}} of the box · weight stays under payload</span></div>
-  <div class="table-wrap"><table>
-    <thead><tr><th>Category</th><th>Examples</th><th>Box grade</th><th>Can't share with</th></tr></thead>
-    <tbody>
-    {{range rulesTable}}
-    <tr><td><span class="cat-chip cat-{{.}}">{{.Label}}</span></td><td class="muted">{{.Examples}}</td>
-      <td>{{if eq (printf "%s" .) "dg"}}<span class="pill red plain">Not pooled in phase 1</span>{{else}}{{range $i, $g := .AllowedGrades}}{{if $i}}, {{end}}{{$g}}{{end}}{{end}}</td>
-      <td>{{range $i, $c := .Clashes}}{{if $i}}, {{end}}{{$c.Short}}{{else}}<span class="faint">–</span>{{end}}</td></tr>
-    {{end}}
-    </tbody>
+<section class="vz-rules">
+ <div class="vz-card">
+  <div class="vz-hd"><span>Why an LCL lot can't go into every FCL: loading rules the engine applies</span></div>
+  <div class="vz-scroll"><table>
+   <thead><tr><th>Cargo category</th><th>Examples</th><th>Container category</th><th>Allowed grades</th><th>Can't share a box with</th></tr></thead>
+   <tbody>
+   {{range rulesTable}}
+   <tr><td><b>{{.Label}}</b></td><td>{{.Examples}}</td><td>{{.Kind}}</td>
+    <td>{{range .AllowedGrades}}<span class="vz-chip g-{{.}}">{{.}}</span>{{else}}<span class="vz-neg">Not pooled in phase 1</span>{{end}}</td>
+    <td>{{range $i, $c := .Clashes}}{{if $i}}, {{end}}{{$c.Label}}{{else}}Nothing{{end}}</td></tr>
+   {{end}}
+   </tbody>
   </table></div>
+  <p class="vz-note" style="padding:0 14px 12px">Grades: A · food grade (clean, odour-free, no damage, fit for fabric) · B · general cargo-worthy · C · heavy duty (dents allowed, for machinery parts). Grade A boxes stay clean: no dyes, chemicals or machinery parts.</p>
+ </div>
 </section>
+</div>
 {{end}}

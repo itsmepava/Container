@@ -1,137 +1,59 @@
 package web
 
 import (
+	"encoding/json"
 	"fmt"
 	"html"
 	"html/template"
+	"math"
 	"strings"
+	"time"
 
 	"github.com/itsmepava/container/internal/app"
 	"github.com/itsmepava/container/internal/domain"
 )
 
-// svgLot is one shipper's slice of a container drawing.
-type svgLot struct {
-	ID    int64
-	Name  string // shown on wide slices
-	CBM   float64
-	Color int  // lot-N palette index; -1 = neutral (another shipper)
-	You   bool // the viewer's own lot (shipper view)
+// figLot is one slice in a container drawing.
+type figLot struct {
+	ID   int64   `json:"id"`
+	Name string  `json:"n"`
+	CBM  float64 `json:"c"`
+	Col  string  `json:"col"`
+	Ink  string  `json:"ink,omitempty"` // text colour; white when empty
 }
 
-// svgBox describes a container to draw in oblique 3D, to true scale.
-type svgBox struct {
-	Spec      domain.ContainerSpec
-	Usable    float64 // usable CBM (stowage applied)
-	BreakEven float64 // CBM at which an own box beats co-load; 0 = none
-	Lots      []svgLot
-	MaxLen    float64 // longest box on the page, so boxes compare to scale
+// figBox is what app.js needs to draw a container in oblique 3D, to scale,
+// exactly as the load planner does: lots laid along the length, free space,
+// the break-even line and the usable label.
+type figBox struct {
+	Code      string   `json:"t"`
+	L         float64  `json:"L"`
+	W         float64  `json:"W"`
+	H         float64  `json:"H"`
+	Usable    float64  `json:"usable"`
+	BreakEven float64  `json:"be,omitempty"` // CBM / W/M; 0 = none
+	MaxL      float64  `json:"maxL"`
+	Lots      []figLot `json:"lots"`
 }
 
-const svgScale = 64.0 // viewBox units per metre
-
-// boxSVG draws the container: a front face with lots as slices along its
-// length (usable space spread over the full length), an oblique top, the door
-// end, free space, and the break-even and usable markers.
-func boxSVG(b svgBox) template.HTML {
-	l, w, h := b.Spec.Dims()
-	maxL := b.MaxLen
-	if maxL < l {
-		maxL = l
+func figHTML(b figBox, label string) template.HTML {
+	if b.MaxL < b.L {
+		b.MaxL = b.L
 	}
-	s := svgScale
-	dx, dy := w*s*0.42, w*s*0.28
-	x0, y0 := 10.0, dy+12
-	Ls, Hs := l*s, h*s
-	vbW := maxL*s + dx + 24
-	vbH := y0 + Hs + 44
-	perCBM := 0.0
-	if b.Usable > 0 {
-		perCBM = Ls / b.Usable
-	}
-	var g strings.Builder
-	f := func(format string, a ...any) { fmt.Fprintf(&g, format, a...) }
-
-	// Body: top face and front face.
-	f(`<polygon class="bx-top" points="%.1f,%.1f %.1f,%.1f %.1f,%.1f %.1f,%.1f"/>`, x0, y0, x0+Ls, y0, x0+Ls+dx, y0-dy, x0+dx, y0-dy)
-	f(`<rect class="bx-front" x="%.1f" y="%.1f" width="%.1f" height="%.1f"/>`, x0, y0, Ls, Hs)
-	for m := 0.3; m < l; m += 0.3 {
-		f(`<line class="bx-rib" x1="%.1f" x2="%.1f" y1="%.1f" y2="%.1f"/>`, x0+m*s, x0+m*s, y0+2, y0+Hs-2)
-	}
-	// Lots.
-	a := 0.0
-	used := 0.0
-	for _, lot := range b.Lots {
-		ln := lot.CBM * perCBM
-		if a+ln > Ls {
-			ln = Ls - a
-		}
-		if ln <= 0 {
-			continue
-		}
-		x := x0 + a
-		fill := fmt.Sprintf("var(--lot%d)", lot.Color)
-		cls := "bx-lot"
-		if lot.Color < 0 {
-			fill = "var(--line-strong)"
-			cls += " other"
-		}
-		if lot.You {
-			fill = "var(--brand)"
-		}
-		f(`<g class="%s" data-lot="%d"><title>%s · %.1f CBM</title>`, cls, lot.ID, html.EscapeString(lot.Name), lot.CBM)
-		f(`<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s" stroke="var(--surface)"/>`, x, y0, ln, Hs, fill)
-		f(`<polygon points="%.1f,%.1f %.1f,%.1f %.1f,%.1f %.1f,%.1f" fill="%s" opacity=".72" stroke="var(--surface)"/>`, x, y0, x+ln, y0, x+ln+dx, y0-dy, x+dx, y0-dy, fill)
-		txt := "#fff"
-		if lot.Color < 0 {
-			txt = "var(--ink-2)"
-		}
-		name := fitText(lot.Name, int(ln/7.2))
-		switch {
-		case ln > 70:
-			f(`<text x="%.1f" y="%.1f" text-anchor="middle" fill="%s" class="bx-name">%s</text>`, x+ln/2, y0+Hs/2-5, txt, html.EscapeString(name))
-			f(`<text x="%.1f" y="%.1f" text-anchor="middle" fill="%s" class="bx-num">%.1f</text>`, x+ln/2, y0+Hs/2+13, txt, lot.CBM)
-		case ln > 26:
-			f(`<text x="%.1f" y="%.1f" text-anchor="middle" fill="%s" class="bx-num">%.1f</text>`, x+ln/2, y0+Hs/2+4, txt, lot.CBM)
-		}
-		g.WriteString(`</g>`)
-		a += ln
-		used += lot.CBM
-	}
-	// Door end.
-	f(`<polygon class="bx-end" points="%.1f,%.1f %.1f,%.1f %.1f,%.1f %.1f,%.1f"/>`, x0+Ls, y0, x0+Ls+dx, y0-dy, x0+Ls+dx, y0-dy+Hs, x0+Ls, y0+Hs)
-	f(`<line class="bx-door" x1="%.1f" x2="%.1f" y1="%.1f" y2="%.1f"/>`, x0+Ls+dx*.5, x0+Ls+dx*.5, y0-dy*.5+6, y0-dy*.5+Hs-6)
-	// Free space.
-	if a < Ls-8 {
-		f(`<rect class="bx-free" x="%.1f" y="%.1f" width="%.1f" height="%.1f"/>`, x0+a+2, y0+3, Ls-a-4, Hs-6)
-		if Ls-a > 110 {
-			free := b.Usable - used
-			if free < 0 {
-				free = 0
-			}
-			f(`<text class="bx-freetxt" x="%.1f" y="%.1f" text-anchor="middle">%.1f CBM free</text>`, x0+a+(Ls-a)/2, y0+Hs/2+4, free)
-		}
-	}
-	// Markers.
-	if b.BreakEven > 0 && b.BreakEven < b.Usable {
-		bx := x0 + b.BreakEven*perCBM
-		f(`<line class="bx-be" x1="%.1f" x2="%.1f" y1="%.1f" y2="%.1f"/>`, bx, bx, y0-6, y0+Hs+6)
-		ty := y0 + Hs + 20
-		if x0+Ls-bx < 180 {
-			ty += 15 // keep clear of the "usable" label
-		}
-		f(`<text class="bx-betxt" x="%.1f" y="%.1f" text-anchor="middle">break-even %.1f</text>`, bx, ty, b.BreakEven)
-	}
-	f(`<text class="bx-usetxt" x="%.1f" y="%.1f" text-anchor="end">usable %.1f CBM</text>`, x0+Ls, y0+Hs+20, b.Usable)
-
-	return template.HTML(fmt.Sprintf(`<svg class="box3d" viewBox="0 0 %.0f %.0f" role="img" aria-label="%s, %.1f of %.1f usable CBM loaded" preserveAspectRatio="xMinYMid meet">%s</svg>`,
-		vbW, vbH, b.Spec.Code, used, b.Usable, g.String()))
+	data, _ := json.Marshal(b)
+	return template.HTML(fmt.Sprintf(`<div class="fig" data-box="%s"><svg role="img" aria-label="%s"></svg></div>`,
+		html.EscapeString(string(data)), html.EscapeString(label)))
 }
 
-func specFor(code string, specs []domain.ContainerSpec) domain.ContainerSpec {
-	if s, ok := domain.SpecByCode(specs, code); ok {
-		return s
+func newFig(spec domain.ContainerSpec, usable, be, maxL float64) figBox {
+	l, w, h := spec.Dims()
+	if math.IsInf(be, 0) || math.IsNaN(be) || be <= 0 {
+		be = 0
 	}
+	return figBox{Code: spec.Code, L: l, W: w, H: h, Usable: usable, BreakEven: domain.Round(be, 2), MaxL: maxL}
+}
+
+func specFor(code string) domain.ContainerSpec {
 	if s, ok := domain.SpecByCode(domain.DefaultContainerSpecs, code); ok {
 		return s
 	}
@@ -139,54 +61,87 @@ func specFor(code string, specs []domain.ContainerSpec) domain.ContainerSpec {
 }
 
 func init() {
-	// box3d draws a planning container with its placed lots.
-	funcs["box3d"] = func(pb *app.PlannedBox, p *app.Planner) template.HTML {
-		b := svgBox{Spec: pb.Container.Spec, Usable: pb.Box.Usable, BreakEven: p.BreakEvenFor(pb.Container.BoxCode), MaxLen: p.MaxLen()}
+	// fleetFig draws a container option's simulated load.
+	funcs["fleetFig"] = func(fp domain.FleetPlan, p *app.Planner) template.HTML {
+		b := newFig(fp.Option.Spec, fp.Usable, fp.BreakEven, p.FleetMaxLen())
+		for _, l := range fp.Fit {
+			b.Lots = append(b.Lots, figLot{ID: l.ID, Name: l.Name, CBM: l.CBM, Col: p.HueOf[l.ID]})
+		}
+		return figHTML(b, fmt.Sprintf("%s grade %s filled %.0f percent", fp.Option.Spec.Code, fp.Option.Grade, fp.Fill*100))
+	}
+	// boxFig draws a planning container with the lots placed in it.
+	funcs["boxFig"] = func(pb *app.PlannedBox, p *app.Planner) template.HTML {
+		be := 0.0
+		if u := p.Sell - p.Handling; u > 0 {
+			be = p.Sailing.Lane.Rates[pb.Container.BoxCode] / u
+		}
+		b := newFig(pb.Container.Spec, pb.Box.Usable, be, p.MaxLen())
 		for _, l := range pb.Lots {
-			b.Lots = append(b.Lots, svgLot{ID: l.Booking.ID, Name: l.Label + " " + l.Booking.CompanyName, CBM: l.Booking.CBM, Color: l.Color})
+			b.Lots = append(b.Lots, figLot{ID: l.Booking.ID, Name: l.Booking.CompanyName, CBM: l.Booking.CBM, Col: l.Hue})
 		}
-		return boxSVG(b)
+		return figHTML(b, fmt.Sprintf("Container %d, %s, %.1f of %.1f usable CBM loaded", pb.Container.Seq, pb.Container.BoxCode, pb.Box.UsedCBM(), pb.Box.Usable))
 	}
-	// box3dOption draws the simulated load of a container option.
-	funcs["box3dOption"] = func(o domain.ContainerOption, p *app.Planner) template.HTML {
-		b := svgBox{Spec: o.Spec, Usable: o.Usable, BreakEven: p.BreakEvenFor(o.Spec.Code), MaxLen: p.MaxLen()}
-		if o.Box != nil {
-			for _, l := range o.Box.Lots {
-				name := l.Label + " " + l.Name
-				b.Lots = append(b.Lots, svgLot{ID: l.ID, Name: name, CBM: l.CBM, Color: p.ColorOf[l.ID]})
-			}
-		}
-		return boxSVG(b)
-	}
-	// box3dMine draws a shipper's anonymous view: their lot, everyone else, free space.
-	funcs["box3dMine"] = func(code string, usable, mine, others float64) template.HTML {
-		b := svgBox{Spec: specFor(code, nil), Usable: usable}
-		b.Lots = append(b.Lots, svgLot{Name: "You", CBM: mine, You: true})
+	// mineFig is a shipper's anonymous view: their lot, everyone else, free space.
+	funcs["mineFig"] = func(code string, usable, mine, others float64) template.HTML {
+		b := newFig(specFor(code), usable, 0, 0)
+		b.Lots = append(b.Lots, figLot{Name: "You", CBM: mine, Col: "#127a52"})
 		if others > 0 {
-			b.Lots = append(b.Lots, svgLot{Name: "Other shippers", CBM: others, Color: -1})
+			b.Lots = append(b.Lots, figLot{Name: "Other shippers", CBM: others, Col: "#c3cdd8", Ink: "#0d1b2a"})
 		}
-		return boxSVG(b)
+		return figHTML(b, fmt.Sprintf("Your %.1f CBM in a %s", mine, code))
 	}
 	funcs["dims"] = func(sp domain.ContainerSpec) string {
 		l, w, h := sp.Dims()
-		return fmt.Sprintf("%.2f × %.2f × %.2f m", l, w, h)
+		return fmt.Sprintf("%g × %g × %g m", l, w, h)
 	}
-	funcs["unplacedGroups"] = domain.GroupUnplaced
 	funcs["rulesTable"] = func() []domain.Category { return domain.Categories }
-}
-
-// fitText shortens s to at most n characters, on a word boundary when it can.
-func fitText(s string, n int) string {
-	r := []rune(s)
-	if len(r) <= n {
+	funcs["pct100"] = func(v float64) string { return fmt.Sprintf("%.0f%%", v*100) }
+	funcs["usdSigned"] = func(v float64) string {
+		s := "USD " + thousandsInt(math.Abs(math.Round(v)))
+		if v < 0 {
+			return "− " + s
+		}
 		return s
 	}
-	if n < 2 {
-		return ""
+	// sailLabel is "Thu 10 Dec · MV Kelani Star 050W".
+	funcs["sailLabel"] = func(s *app.Sailing) string {
+		if s == nil {
+			return "no sailing"
+		}
+		v := s.Vessel()
+		if v == nil {
+			return s.Label()
+		}
+		return strings.TrimSpace(v.ETD.In(domain.Colombo).Format("Mon 2 Jan") + " · " + v.Name + " " + v.Voyage)
 	}
-	cut := string(r[:n-1])
-	if i := strings.LastIndexByte(cut, ' '); i > 0 {
-		cut = cut[:i]
+	// leftTxt is the time to the CFS cut-off, as the sailing cards show it.
+	funcs["leftTxt"] = func(s *app.Sailing) string {
+		now := time.Now()
+		if v := s.Vessel(); v != nil && v.ETD.Before(now) {
+			return "sailed"
+		}
+		ms := s.CFSCutoff.Sub(now)
+		if ms <= 0 {
+			return "cut-off passed"
+		}
+		d, h := int(ms.Hours())/24, int(ms.Hours())%24
+		if d > 0 {
+			return fmt.Sprintf("%d d %d h to CFS cut-off", d, h)
+		}
+		return fmt.Sprintf("%d h to CFS cut-off", h)
 	}
-	return strings.TrimRight(cut, " ·,") + "…"
+	funcs["cutTxt"] = func(t time.Time) string { return t.In(domain.Colombo).Format("Mon 2 Jan 15:04") }
+	funcs["isInf"] = func(v float64) bool { return math.IsInf(v, 0) }
+}
+
+func thousandsInt(v float64) string {
+	s := fmt.Sprintf("%.0f", v)
+	out := ""
+	for i, c := range s {
+		if i > 0 && (len(s)-i)%3 == 0 {
+			out += ","
+		}
+		out += string(c)
+	}
+	return out
 }

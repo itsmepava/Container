@@ -210,24 +210,66 @@ async function openDialogFor(page, action) {
     await submit(ops, `${c2}/remove`, 'Container removed');
     if (await form(ops, `/ops/sailings/${planSailing}/autoplace`).count()) await submit(ops, `/ops/sailings/${planSailing}/autoplace`, 'Placed');
 
-    step('ops: container options');
-    const use = ops.locator('form[action^="/ops/containers/"]:has(input[name=box][value="45HC"]) button').first();
-    if (await use.count()) {
-      await Promise.all([ops.waitForNavigation(), use.click()]);
-      await result(ops, 'is now a 45HC');
-      await Promise.all([ops.waitForNavigation(), ops.locator('form[action^="/ops/containers/"]:has(input[name=box][value="40HC"]) button').first().click()]);
-      await result(ops, 'is now a 40HC');
-    }
-
-    step('ops: move request asked to the shipper');
+    step('ops: planner money, options, bookings, sailings');
     await ops.goto(BASE + plan);
-    const moveForms = ops.locator('form[action$="/move"]');
-    let movedBooking = '';
-    if (await moveForms.count()) {
-      movedBooking = (await moveForms.last().getAttribute('action')).split('/')[3];
-      await Promise.all([ops.waitForNavigation(), moveForms.last().locator('button').click()]);
-      await result(ops, '');
+    const optAction = await ops.locator('form[action^="/ops/lanes/"][action$="/options"]').getAttribute('action');
+    const laneBase = optAction.replace(/\/options$/, '');
+    {
+      const sell = ops.locator(`form[action="${laneBase}/money"] input[name=sell]`);
+      await sell.fill('51');
+      await Promise.all([ops.waitForNavigation(), sell.press('Tab')]);
+      await result(ops, 'Loading and money saved');
+      const sell2 = ops.locator(`form[action="${laneBase}/money"] input[name=sell]`);
+      await sell2.fill('50');
+      await Promise.all([ops.waitForNavigation(), sell2.press('Tab')]);
+      await result(ops, 'Loading and money saved');
     }
+    await submit(ops, optAction, 'Container option added', async f => {
+      await f.locator('[name=box]').selectOption('20GP');
+      await f.locator('[name=grade]').selectOption('C');
+      await f.locator('[name=cost]').fill('1300');
+    });
+    await submit(ops, await ops.locator('form[action^="/ops/lane-options/"]:has(button[aria-label*="20GP grade C"])').getAttribute('action'), 'Container option removed');
+    await submit(ops, `/ops/sailings/${planSailing}/bookings`, 'Booking added', async f => {
+      await f.locator('[name=company]').selectOption({ index: 1 });
+      await f.locator('[name=cbm]').fill('1.2');
+      await f.locator('[name=kg]').fill('200');
+      await f.locator('[name=category]').selectOption('trims');
+    });
+    await submit(ops, await ops.locator('form[action$="/remove"][action^="/ops/bookings/"]').last().getAttribute('action'), 'Booking removed');
+    await submit(ops, `${laneBase}/sailings`, 'Sailing added', async f => {
+      await f.locator('[name=vessel]').fill('MV Test Star');
+      await f.locator('[name=voyage]').fill('999W');
+      await f.locator('[name=etd]').fill(new Date(Date.now() + 90 * 864e5).toISOString().slice(0, 10));
+    });
+
+    step('ops: convert to FCL with a container option');
+    await ops.goto(BASE + plan);
+    const useOther = ops.locator(`form[action="/ops/sailings/${planSailing}/convert"] button:has-text("Use this box instead")`);
+    if (await useOther.count()) {
+      await Promise.all([ops.waitForNavigation(), useOther.last().click()]);
+      await result(ops, 'Converted to FCL');
+    }
+    const best = ops.locator(`form[action="/ops/sailings/${planSailing}/convert"] button`).first();
+    if (!(await best.count())) problems.push('[convert] no convert button');
+    await Promise.all([ops.waitForNavigation(), best.click()]);
+    await result(ops, 'Converted to FCL');
+    // Back to the 40HC so one lot has no space left and can be rolled.
+    const forty = ops.locator(`.vz-box:has(b:text-is("40HC")) form[action="/ops/sailings/${planSailing}/convert"] button`);
+    if (await forty.count()) {
+      await Promise.all([ops.waitForNavigation(), forty.click()]);
+      await result(ops, 'Converted to FCL');
+    } else problems.push('[convert] no 40HC option');
+
+    step('ops: roll a lot to the next sailing');
+    await ops.goto(BASE + plan);
+    const rollForms = ops.locator('form[action$="/roll"]');
+    let movedBooking = '';
+    if (await rollForms.count()) {
+      movedBooking = (await rollForms.last().getAttribute('action')).split('/')[3];
+      await Promise.all([ops.waitForNavigation(), rollForms.last().locator('button').click()]);
+      await result(ops, 'Roll requested');
+    } else problems.push('[roll] no roll button');
 
     step('shipper answers the move request');
     if (movedBooking) {

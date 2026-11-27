@@ -231,11 +231,19 @@ func (s *Server) planUpdateContainer(w http.ResponseWriter, r *http.Request) {
 	if grade == "" {
 		grade = c.Grade
 	}
-	if err := s.app.UpdateContainer(r.Context(), userOf(r), c.ID, box, grade); err != nil {
+	removed, err := s.app.UpdateContainer(r.Context(), userOf(r), c.ID, box, grade)
+	if err != nil {
 		s.fail(w, r, err, planURL(c.SailingID))
 		return
 	}
-	s.done(w, r, fmt.Sprintf("Container %d is now a %s, grade %s.", c.Seq, box, grade), planURL(c.SailingID))
+	msg := fmt.Sprintf("Container %d is now a %s, grade %s.", c.Seq, box, grade)
+	if removed > 0 {
+		msg += fmt.Sprintf(" %d lot(s) no longer fit and are waiting to be placed.", removed)
+		s.flash(w, "warn", msg)
+		http.Redirect(w, r, planURL(c.SailingID), http.StatusSeeOther)
+		return
+	}
+	s.done(w, r, msg, planURL(c.SailingID))
 }
 
 func (s *Server) planRemoveContainer(w http.ResponseWriter, r *http.Request) {

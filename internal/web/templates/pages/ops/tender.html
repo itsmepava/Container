@@ -5,7 +5,7 @@
     <div class="row"><h1 class="mono">{{$t.Ref}}</h1>{{template "status-pill" $t.StatusLabel}}{{if eq $t.AwardKind "override"}}<span class="pill amber">Override</span>{{end}}</div>
     <div class="sub">1 × {{$t.Container.BoxCode}} · {{$t.Sailing.Lane.Short}} · {{$t.Sailing.Label}} · requested {{$t.Vessel.Label}}, {{$t.Vessel.ServiceLabel}} · {{n1 $t.CBM}} CBM · {{tonnes $t.Kg}} t · {{$t.Lots}} lots</div>
   </div>
-  <a class="btn" href="/ops/sailings/{{$t.Sailing.ID}}/plan">‹ Load planner</a>
+  <a class="btn" href="/ops/sailings/{{$t.Sailing.ID}}/plan">Load planner</a>
 </div>
 
 <div class="grid cols-main">

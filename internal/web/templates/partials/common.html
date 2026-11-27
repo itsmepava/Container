@@ -2,7 +2,7 @@
 
 {{define "csrf"}}<input type="hidden" name="csrf" value="{{.}}">{{end}}
 
-{{define "status-pill"}}<span class="pill {{statusClass .}}">{{.}}</span>{{end}}
+{{define "status-pill"}}<span class="pill {{statusClass .}}">{{title .}}</span>{{end}}
 
 {{define "tracker"}}
 <div class="tracker">

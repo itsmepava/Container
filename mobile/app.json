@@ -15,7 +15,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#0B4EA2",
+        "backgroundColor": "#292728",
         "foregroundImage": "./assets/android-icon-foreground.png",
         "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
@@ -39,7 +39,7 @@
       [
         "expo-notifications",
         {
-          "color": "#0B4EA2"
+          "color": "#62A420"
         }
       ],
       [
@@ -51,7 +51,7 @@
       "expo-font"
     ],
     "scheme": "eimsky",
-    "primaryColor": "#0B4EA2",
+    "primaryColor": "#292728",
     "experiments": {
       "typedRoutes": true
     },

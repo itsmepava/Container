@@ -1,5 +1,4 @@
 {{define "content"}}
-{{template "admin-tabs" .}}
 <div class="page-head"><div><h1>Settings</h1><div class="sub">{{if .User.IsAdmin}}Changes apply straight away and are logged.{{else}}Only admins can change settings.{{end}}</div></div></div>
 <div class="grid cols-2" style="align-items:start">
 <form method="post" action="/admin/settings" class="card">{{template "csrf" .CSRF}}

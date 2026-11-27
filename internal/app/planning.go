@@ -471,21 +471,23 @@ func (a *App) AddContainer(ctx context.Context, actor *User, sailingID int64, bo
 	})
 }
 
-// UpdateContainer changes a box's type or grade if its lots still fit.
-func (a *App) UpdateContainer(ctx context.Context, actor *User, containerID int64, boxCode string, grade domain.Grade) error {
+// UpdateContainer changes a box's type or grade. Lots that no longer fit are
+// taken out to wait for placement; it returns how many.
+func (a *App) UpdateContainer(ctx context.Context, actor *User, containerID int64, boxCode string, grade domain.Grade) (int, error) {
 	c, err := a.ContainerByID(ctx, containerID)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	specs, err := a.ContainerSpecs(ctx)
 	if err != nil {
-		return err
+		return 0, err
 	}
 	spec, ok := domain.SpecByCode(specs, boxCode)
 	if !ok || !grade.Valid() {
-		return Errf("Choose a container type and grade.")
+		return 0, Errf("Choose a container type and grade.")
 	}
-	return a.Tx(ctx, func(tx pgx.Tx) error {
+	var removed int
+	err = a.Tx(ctx, func(tx pgx.Tx) error {
 		if _, err := a.requireOpen(ctx, tx, c.SailingID); err != nil {
 			return err
 		}
@@ -514,8 +516,10 @@ func (a *App) UpdateContainer(ctx context.Context, actor *User, containerID int6
 		if len(out) > 0 {
 			sum += "; taken out: " + strings.Join(out, ", ")
 		}
+		removed = len(out)
 		return a.Audit(ctx, tx, actor, "plan.container_update", "sailing", c.SailingID, sum, nil)
 	})
+	return removed, err
 }
 
 // RemoveContainer cancels a box; its lots become unplaced.

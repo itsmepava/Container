@@ -2,7 +2,7 @@
 {{define "content"}}
 {{$s := .D.S}}
 <div class="page-head">
-  <div><a href="/admin/lanes" class="small">‹ Lanes and sailings</a><div class="row" style="margin-top:4px"><h1>{{$s.Lane.Short}} · {{$s.Label}}</h1>{{template "status-pill" $s.StatusLabel}}</div></div>
+  <div><div class="row"><h1>{{$s.Lane.Short}} · {{$s.Label}}</h1>{{template "status-pill" $s.StatusLabel}}</div></div>
   <div class="row"><a class="btn" href="/ops/sailings/{{$s.ID}}/plan">Load planner</a>
     <form method="post" action="/admin/sailings/{{$s.ID}}/copy">{{template "csrf" .CSRF}}<button class="btn">Copy to next week</button></form></div>
 </div>

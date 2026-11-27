@@ -1,5 +1,4 @@
 {{define "content"}}
-{{template "admin-tabs" .}}
 <div class="page-head"><div><h1>Users</h1><div class="sub">{{if .D.Q}}Search results across all companies{{else}}Eimsky staff. Search to find anyone.{{end}}</div></div>
   <div class="row"><form method="get"><input type="search" name="q" value="{{.D.Q}}" placeholder="Name, email, phone or company" style="width:260px"></form>
   {{if .User.IsAdmin}}<button class="btn primary" data-open="invite-dlg">+ Invite</button>{{end}}</div></div>

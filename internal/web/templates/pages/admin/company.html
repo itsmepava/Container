@@ -1,8 +1,8 @@
 {{define "content"}}
 {{$c := .D.C}}
 <div class="page-head">
-  <div><a href="/admin/companies" class="small">‹ Companies</a>
-    <div class="row" style="margin-top:4px"><h1>{{$c.Name}}</h1><span class="pill">{{$c.KindLabel}}</span>{{template "status-pill" $c.Status}}</div>
+  <div>
+    <div class="row"><h1>{{$c.Name}}</h1><span class="pill">{{$c.KindLabel}}</span>{{template "status-pill" $c.Status}}</div>
     <div class="sub">{{if $c.RegNumber}}Reg. {{$c.RegNumber}} · {{end}}{{if $c.Email}}{{$c.Email}} · {{end}}{{if $c.Phone}}{{$c.Phone}} · {{end}}joined {{date $c.CreatedAt}}</div></div>
 </div>
 {{if eq $c.Status "pending"}}

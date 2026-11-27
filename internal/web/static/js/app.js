@@ -1,6 +1,39 @@
 // Eimsky web behaviours. Plain JS, no framework; htmx handles partial updates.
 (function () {
   "use strict";
+
+  // ---------- Theme ----------
+  var html = document.documentElement;
+  function setTheme(t) {
+    html.setAttribute("data-theme", t);
+    document.cookie = "theme=" + t + "; path=/; max-age=31536000; samesite=lax";
+    document.querySelectorAll("[data-theme-set]").forEach(function (b) { b.classList.toggle("on", b.getAttribute("data-theme-set") === t); });
+    var c = document.querySelector("[data-theme-cycle]"); if (c) c.title = "Theme: " + t;
+  }
+  document.addEventListener("click", function (e) {
+    var set = e.target.closest("[data-theme-set]");
+    if (set) { e.preventDefault(); setTheme(set.getAttribute("data-theme-set")); return; }
+    var cyc = e.target.closest("[data-theme-cycle]");
+    if (cyc) {
+      e.preventDefault();
+      var order = ["light", "dark", "system"], cur = html.getAttribute("data-theme") || "system";
+      setTheme(order[(order.indexOf(cur) + 1) % order.length]);
+    }
+  });
+
+  // ---------- Sidebar drawer (phones) and menus ----------
+  document.addEventListener("click", function (e) {
+    if (e.target.closest("[data-nav-toggle]")) { document.body.classList.toggle("nav-open"); return; }
+    if (e.target.closest("[data-nav-close]")) { document.body.classList.remove("nav-open"); return; }
+    document.querySelectorAll("details.menu[open]").forEach(function (d) { if (!d.contains(e.target)) d.removeAttribute("open"); });
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape") {
+      document.body.classList.remove("nav-open");
+      document.querySelectorAll("details.menu[open]").forEach(function (d) { d.removeAttribute("open"); });
+    }
+  });
+
   var csrf = (document.querySelector('meta[name="csrf-token"]') || {}).content || "";
 
   // htmx: send the CSRF token and keep focus/scroll stable.
@@ -19,10 +52,16 @@
     var msg = f.getAttribute("data-confirm");
     if (msg && !window.confirm(msg)) { e.preventDefault(); return; }
     if (f.hasAttribute("data-keep-scroll")) { try { sessionStorage.setItem(scrollKey, String(window.scrollY)); } catch (_) {} }
-    // Prevent double submits.
+    // Prevent double submits, but never leave buttons dead: they come back
+    // after a few seconds, and when the page is restored with Back/Forward.
     var btns = f.querySelectorAll('button[type=submit],button:not([type])');
-    setTimeout(function () { btns.forEach(function (b) { b.disabled = true; }); }, 0);
+    setTimeout(function () { btns.forEach(function (b) { b.disabled = true; b.classList.add("busy"); b.dataset.busy = "1"; }); }, 0);
+    setTimeout(function () { releaseButtons(f); }, 8000);
   });
+  function releaseButtons(root) {
+    (root || document).querySelectorAll('[data-busy]').forEach(function (b) { b.disabled = false; b.classList.remove("busy"); delete b.dataset.busy; });
+  }
+  window.addEventListener("pageshow", function (e) { if (e.persisted) releaseButtons(); });
 
   // Auto-submit selects and file inputs.
   document.addEventListener("change", function (e) {

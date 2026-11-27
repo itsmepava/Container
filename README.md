@@ -9,6 +9,8 @@ Eimsky pools apparel factories' LCL raw-material imports into full containers. F
 | Forwarders | Mobile (iOS and Android) | Register with documents and lanes, get push notifications for new tenders, place sealed bids, see awards with shipper contacts and documents, upload booking confirmations |
 | JAAF / FAAMA | Web: `/insights` | Anonymised totals: volume, fill, all-in cost, cargo mix, by lane and HS code. Figures from fewer than 3 factories are hidden |
 
+The web app uses the Eimsky brand (charcoal, green and lime; Bricolage Grotesque and DM Sans) with a sidebar workspace and light, dark and automatic themes: use the sun/moon button in the top bar or the account menu.
+
 ## Quickest start (Linux or macOS, nothing to install)
 
 ```bash
@@ -149,7 +151,7 @@ make test-mobile  # TypeScript check + Jest
 ```
 
 ```bash
-make e2e          # browser + API: book → lock → bid → award → confirm → invoice
+make e2e          # browser + API: the full lifecycle, then every button and form for every role
 ```
 
 CI (`.github/workflows/ci.yml`) runs all three on every push.

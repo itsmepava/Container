@@ -24,7 +24,7 @@ export async function registerForPush(): Promise<string | null> {
     await Notifications.setNotificationChannelAsync('tenders', {
       name: 'New tenders and results',
       importance: Notifications.AndroidImportance.MAX,
-      lightColor: '#0B4EA2',
+      lightColor: '#62A420',
     });
   }
   let { status } = await Notifications.getPermissionsAsync();

@@ -1,7 +1,7 @@
 {{define "mainclass"}}narrow{{end}}
 {{define "content"}}
 {{$f := .D}}
-<div class="page-head"><div><a href="/admin/lanes" class="small">‹ Lanes and sailings</a><h1 style="margin-top:4px">New sailing</h1><div class="sub">Opens a week for booking with a first container from the lane's defaults.</div></div></div>
+<div class="page-head"><div><h1>New sailing</h1><div class="sub">Opens a week for booking with a first container from the lane's defaults.</div></div></div>
 <form method="post" action="/admin/sailings" class="stack">{{template "csrf" .CSRF}}
   <section class="card">
     <div class="form-row">

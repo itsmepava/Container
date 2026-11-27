@@ -48,10 +48,10 @@ export default function SignIn() {
     <SafeAreaView style={{ flex: 1, backgroundColor: t.bg }}>
       <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined} style={{ flex: 1, justifyContent: 'center', padding: 24, gap: 16 }}>
         <View style={{ flexDirection: 'row', height: 36, borderRadius: 8, overflow: 'hidden', marginBottom: 12 }} accessibilityElementsHidden>
-          {['#0B4EA2', '#6B46A8', '#137A52', '#B4530F', '#0F7490'].map((c, i) => <View key={c} style={{ flex: [16, 11, 18, 9, 13][i], backgroundColor: c }} />)}
+          {['#62A420', '#2F6FDB', '#7A5CC7', '#C88414', '#1F8A8A'].map((c, i) => <View key={c} style={{ flex: [16, 11, 18, 9, 13][i], backgroundColor: c }} />)}
           <View style={{ flex: 10, borderWidth: 2, borderStyle: 'dashed', borderColor: t.faint, borderTopRightRadius: 8, borderBottomRightRadius: 8 }} />
         </View>
-        <Eyebrow>Eimsky · Forwarder</Eyebrow>
+        <Eyebrow color={t.brand}>Eimsky · Forwarder</Eyebrow>
         {step === 'phone' ? (
           <>
             <H1>Bid on full containers</H1>

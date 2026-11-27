@@ -1,64 +1,116 @@
 {{define "app"}}<!doctype html>
-<html lang="en">
+<html lang="en" data-theme="{{.Theme}}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>{{.Title}} · Eimsky</title>
 <meta name="csrf-token" content="{{.CSRF}}">
+<meta name="color-scheme" content="light dark">
 <link rel="icon" href="/favicon.ico" type="image/svg+xml">
-<link rel="stylesheet" href="/static/css/app.css">
+<link rel="stylesheet" href="/static/css/app.css?v={{assetVersion}}">
 <script src="/static/vendor/htmx.min.js" defer></script>
-<script src="/static/js/app.js" defer></script>
+<script src="/static/js/app.js?v={{assetVersion}}" defer></script>
 </head>
 <body>
-<header class="topbar{{if eq .Area "ops"}} dark{{end}}">
-  <div class="topbar-in">
-    <a href="/" class="brand" style="text-decoration:none;color:inherit">
-      <span class="eyebrow">{{.Eyebrow}}</span>
-      <span class="title">{{block "heading" .}}{{.Title}}{{end}}</span>
-    </a>
+{{template "icon-sprite"}}
+<div class="shell">
+  <aside class="sb" id="sidebar" aria-label="Main navigation">
+    <a class="sb-logo" href="/">{{template "logo"}}<span class="tag">{{if eq .Area "ops"}}Ops{{else if eq .Area "viewer"}}Insights{{else}}Pool{{end}}</span></a>
     {{template "nav" .}}
-    <div class="tools">
-      <a class="bell" href="/notifications" title="Notifications" aria-label="Notifications">
-        {{template "icon-bell"}}
-        <span hx-get="/notifications/count" hx-trigger="every 30s" hx-swap="outerHTML">{{template "unread" .Unread}}</span>
-      </a>
-      <a class="who" href="/account" title="Your account">
+    <div class="sb-foot">
+      <a class="sb-co" href="/account">
         <span class="avatar">{{.User.Initials}}</span>
-        <span class="co">{{if .User.IsStaff}}{{.User.Name}}{{else}}{{.User.CompanyName}}{{end}}</span>
+        <span class="who"><b>{{.User.Name}}</b><span>{{if .User.IsStaff}}{{.User.Role.Label}}{{else}}{{.User.CompanyName}}{{end}}</span></span>
       </a>
     </div>
+  </aside>
+  <div class="scrim" data-nav-close></div>
+  <div class="main">
+    <header class="tb">
+      <div class="tb-in">
+        <button class="icon-btn burger" type="button" data-nav-toggle aria-label="Open menu"><svg class="i"><use href="#i-menu"/></svg></button>
+        <nav class="crumbs" aria-label="Breadcrumb">{{with sectionOf .Path}}<a href="{{.Href}}">{{.Label}}</a><span class="sep">/</span>{{end}}<b>{{block "heading" .}}{{.Title}}{{end}}</b></nav>
+        <div class="tb-tools">
+          {{if .User.IsStaff}}<form class="tb-search" method="get" action="/ops/bookings" role="search"><svg class="i"><use href="#i-search"/></svg><input name="q" placeholder="Find booking or factory" aria-label="Find booking or factory"></form>{{end}}
+          <button class="icon-btn" type="button" data-theme-cycle title="Theme: {{.Theme}}" aria-label="Change theme">
+            <svg class="i theme-ic theme-light"><use href="#i-sun"/></svg><svg class="i theme-ic theme-dark"><use href="#i-moon"/></svg><svg class="i theme-ic theme-system"><use href="#i-monitor"/></svg>
+          </button>
+          <a class="icon-btn" href="/notifications" title="Notifications" aria-label="Notifications">
+            <svg class="i"><use href="#i-bell"/></svg>
+            <span hx-get="/notifications/count" hx-trigger="every 30s" hx-swap="outerHTML">{{template "unread" .Unread}}</span>
+          </a>
+          <details class="menu">
+            <summary class="icon-btn" aria-label="Account menu"><span class="avatar" style="width:28px;height:28px;font-size:11px">{{.User.Initials}}</span></summary>
+            <div class="menu-pop">
+              <div class="head"><b>{{.User.Name}}</b><span>{{.User.Email}}</span></div>
+              <div class="sep"></div>
+              <a class="mi" href="/account"><svg class="i"><use href="#i-user"/></svg>Account and settings</a>
+              <a class="mi" href="/notifications"><svg class="i"><use href="#i-bell"/></svg>Notifications</a>
+              <div class="sep"></div>
+              <div class="seg" role="group" aria-label="Theme">
+                <button type="button" data-theme-set="light" class="{{if eq .Theme "light"}}on{{end}}"><svg class="i"><use href="#i-sun"/></svg>Light</button>
+                <button type="button" data-theme-set="dark" class="{{if eq .Theme "dark"}}on{{end}}"><svg class="i"><use href="#i-moon"/></svg>Dark</button>
+                <button type="button" data-theme-set="system" class="{{if eq .Theme "system"}}on{{end}}"><svg class="i"><use href="#i-monitor"/></svg>Auto</button>
+              </div>
+              <div class="sep"></div>
+              <form method="post" action="/logout">{{template "csrf" .CSRF}}<button class="mi" type="submit"><svg class="i"><use href="#i-logout"/></svg>Sign out</button></form>
+            </div>
+          </details>
+        </div>
+      </div>
+    </header>
+    {{template "flash" .}}
+    {{block "subbar" .}}{{end}}
+    <main class="content {{block "mainclass" .}}{{end}}">
+    {{template "content" .}}
+    </main>
   </div>
-</header>
-{{template "flash" .}}
-{{block "subbar" .}}{{end}}
-<main class="{{block "mainclass" .}}{{end}}">
-{{template "content" .}}
-</main>
+</div>
 </body>
 </html>{{end}}
 
 {{define "unread"}}{{if gt . 0}}<span class="badge-count">{{if gt . 99}}99+{{else}}{{.}}{{end}}</span>{{else}}<span></span>{{end}}{{end}}
 
+{{define "navlink"}}<a class="nav {{if .On}}on{{end}}" href="{{.Href}}"><svg class="i"><use href="#i-{{.Icon}}"/></svg>{{.Label}}{{if .Count}}<span class="count">{{.Count}}</span>{{end}}</a>{{end}}
+
 {{define "nav"}}
-<nav class="nav" aria-label="Main">
 {{if eq .Area "factory"}}
-  <a href="/f/book" class="{{if has .Path "/f/book"}}{{if not (has .Path "/f/bookings")}}on{{end}}{{end}}">New booking</a>
-  <a href="/f/bookings" class="{{if has .Path "/f/bookings"}}on{{end}}">My bookings</a>
-  <a href="/f/invoices" class="{{if has .Path "/f/invoices"}}on{{end}}">Invoices</a>
-  {{if eq (printf "%s" .User.Role) "factory_admin"}}<a href="/f/team" class="{{if has .Path "/f/team"}}on{{end}}">Team</a>{{end}}
+  <div class="sb-group">
+    <div class="sb-label">Shipping</div>
+    {{template "navlink" (dict "Href" "/f/book" "Icon" "plus" "Label" "New booking" "On" (pathIs .Path "/f/book"))}}
+    {{template "navlink" (dict "Href" "/f/bookings" "Icon" "list" "Label" "My bookings" "On" (has .Path "/f/bookings"))}}
+    {{template "navlink" (dict "Href" "/f/invoices" "Icon" "receipt" "Label" "Invoices" "On" (has .Path "/f/invoices"))}}
+  </div>
+  <div class="sb-group">
+    <div class="sb-label">Company</div>
+    {{if eq (printf "%s" .User.Role) "factory_admin"}}{{template "navlink" (dict "Href" "/f/team" "Icon" "users" "Label" "Team" "On" (has .Path "/f/team"))}}{{end}}
+    {{template "navlink" (dict "Href" "/account" "Icon" "settings" "Label" "Account" "On" (has .Path "/account"))}}
+  </div>
 {{else if eq .Area "ops"}}
-  <a href="/ops/pools" class="{{if has .Path "/ops/pools"}}on{{end}}">Pools</a>
-  <a href="/ops/plan" class="{{if has .Path "/plan"}}on{{end}}">Load planner</a>
-  <a href="/ops/tenders" class="{{if has .Path "/ops/tenders"}}on{{end}}">Bids</a>
-  <a href="/ops/bookings" class="{{if has .Path "/ops/bookings"}}on{{end}}">Bookings</a>
-  <a href="/ops/invoices" class="{{if has .Path "/ops/invoices"}}on{{end}}">Invoices</a>
-  <a href="/insights" class="{{if has .Path "/insights"}}on{{end}}">Insights</a>
-  <a href="/admin/lanes" class="{{if has .Path "/admin"}}on{{end}}">Admin{{if gt .Pending 0}} <span class="pill amber" style="padding:0 6px;line-height:1.5">{{.Pending}}</span>{{end}}</a>
+  <div class="sb-group">
+    <div class="sb-label">Operations</div>
+    {{template "navlink" (dict "Href" "/ops/pools" "Icon" "grid" "Label" "Pools" "On" (has .Path "/ops/pools"))}}
+    {{template "navlink" (dict "Href" "/ops/plan" "Icon" "box" "Label" "Load planner" "On" (has .Path "/plan"))}}
+    {{template "navlink" (dict "Href" "/ops/tenders" "Icon" "gavel" "Label" "Bids" "On" (has .Path "/ops/tenders") "Count" .ToAward)}}
+    {{template "navlink" (dict "Href" "/ops/bookings" "Icon" "package" "Label" "Bookings" "On" (has .Path "/ops/bookings"))}}
+    {{template "navlink" (dict "Href" "/ops/invoices" "Icon" "receipt" "Label" "Invoices" "On" (has .Path "/ops/invoices"))}}
+    {{template "navlink" (dict "Href" "/insights" "Icon" "chart" "Label" "Insights" "On" (has .Path "/insights"))}}
+  </div>
+  <div class="sb-group">
+    <div class="sb-label">Admin</div>
+    {{template "navlink" (dict "Href" "/admin/lanes" "Icon" "route" "Label" "Lanes and sailings" "On" (or (has .Path "/admin/lanes") (has .Path "/admin/sailings")))}}
+    {{template "navlink" (dict "Href" "/admin/companies" "Icon" "building" "Label" "Companies" "On" (has .Path "/admin/companies") "Count" .Pending)}}
+    {{template "navlink" (dict "Href" "/admin/users" "Icon" "users" "Label" "Users" "On" (has .Path "/admin/users"))}}
+    {{template "navlink" (dict "Href" "/admin/settings" "Icon" "settings" "Label" "Settings" "On" (has .Path "/admin/settings"))}}
+    {{template "navlink" (dict "Href" "/admin/audit" "Icon" "shield" "Label" "Audit log" "On" (has .Path "/admin/audit"))}}
+    {{if .Dev}}{{template "navlink" (dict "Href" "/dev/mail" "Icon" "mail" "Label" "Email outbox" "On" (has .Path "/dev/mail"))}}{{end}}
+  </div>
 {{else if eq .Area "viewer"}}
-  <a href="/insights" class="on">Insights</a>
+  <div class="sb-group">
+    <div class="sb-label">Industry</div>
+    {{template "navlink" (dict "Href" "/insights" "Icon" "chart" "Label" "Insights" "On" true)}}
+  </div>
 {{end}}
-</nav>
 {{end}}
 
-{{define "flash"}}{{if .Flash}}<div class="flash"><div class="alert {{.Flash.Kind}}" role="status">{{.Flash.Msg}}</div></div>{{end}}{{end}}
+{{define "flash"}}{{if .Flash}}<div class="flash"><div class="alert {{.Flash.Kind}}" role="status" data-flash="{{.Flash.Kind}}">{{.Flash.Msg}}</div></div>{{end}}{{end}}

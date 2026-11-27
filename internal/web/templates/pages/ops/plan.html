@@ -117,7 +117,7 @@
           {{else if $d.Locked}}{{if .Booking.ContainerID}}Container{{else}}<span class="amber">Unplaced</span>{{end}}
           {{else}}
           <form method="post" action="/ops/bookings/{{.Booking.ID}}/place" data-keep-scroll>{{template "csrf" $.CSRF}}
-            <select name="container" class="input-sm" data-autosubmit aria-label="Container for {{.Booking.CompanyName}}">
+            <select name="container" class="input-sm place" data-autosubmit aria-label="Container for {{.Booking.CompanyName}}">
               <option value="0" {{if not .Booking.ContainerID}}selected{{end}}>Unplaced</option>
               {{range $p.Boxes}}<option value="{{.Container.ID}}" {{if eq .Container.ID $l.Booking.ContainerID}}selected{{end}}>Container {{.Container.Seq}}</option>{{end}}
             </select>

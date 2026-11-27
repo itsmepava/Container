@@ -125,6 +125,8 @@
   <label class="check card tight warn" style="margin:0"><input type="checkbox" name="overflow" required {{if $f.AllowOverflow}}checked{{end}}> <span>Book anyway. Eimsky will offer the next sailing or co-loading, and my cost cap stays the same.</span></label>
   {{end}}
   <button class="btn primary lg block" type="submit" {{if not (and $q.CanBook $f.Approved)}}disabled{{end}}>Book <span id="book-cbm">{{cbm $q.CBM}}</span> CBM</button>
+  {{if not $f.Approved}}<p class="why center">Booking opens once Eimsky approves your factory.</p>
+  {{else if not $q.CanBook}}<p class="why center">{{if eq $q.CBM 0.0}}Add at least one complete cargo line (HS code, pieces, size and weight) to book.{{else}}Fix the items listed under “Container type and cargo category” to book.{{end}}</p>{{end}}
   <div>
     <p class="lock-note">Space is held for {{$f.HoldMinutes}} minutes while you confirm. Other shippers in this container are never shown.</p>
     <p class="lock-note">🔒 We keep only size, weight, HS code and category. No prices, buyers, orders or styles.</p>

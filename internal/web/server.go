@@ -133,7 +133,7 @@ func (s *Server) Handler() http.Handler {
 	return r
 }
 
-const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="7" fill="#0b4ea2"/><rect x="6" y="11" width="6" height="10" fill="#fff"/><rect x="13" y="11" width="5" height="10" fill="#b9cff0"/><rect x="19" y="11" width="7" height="10" fill="#fff" opacity=".7"/></svg>`
+const faviconSVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#292728"/><path d="M8 9h16v2.4H8zM8 14.8h11v2.4H8zM8 20.6h16V23H8z" fill="#fff"/><circle cx="23.5" cy="16" r="2.6" fill="#b0cb36"/></svg>`
 
 // ---------- Context ----------
 
@@ -329,6 +329,8 @@ type Page struct {
 	Flash   *Flash
 	Unread  int
 	Pending int
+	ToAward int
+	Theme   string // light, dark or system
 	Dev     bool
 	Now     time.Time
 	Path    string
@@ -337,7 +339,10 @@ type Page struct {
 }
 
 func (s *Server) page(r *http.Request, title string, d any) *Page {
-	p := &Page{Title: title, Layout: "app", D: d, Dev: s.app.Cfg.DevMode, Now: s.app.Now(), Path: r.URL.Path, Query: r.URL.Query()}
+	p := &Page{Title: title, Layout: "app", D: d, Dev: s.app.Cfg.DevMode, Now: s.app.Now(), Path: r.URL.Path, Query: r.URL.Query(), Theme: "system"}
+	if c, err := r.Cookie("theme"); err == nil && (c.Value == "light" || c.Value == "dark") {
+		p.Theme = c.Value
+	}
 	if sess := sessionOf(r); sess != nil {
 		p.User, p.CSRF = sess.User, sess.CSRF
 		p.Unread = s.app.UnreadCount(r.Context(), sess.User.ID)
@@ -348,6 +353,7 @@ func (s *Server) page(r *http.Request, title string, d any) *Page {
 				p.Eyebrow = "Eimsky admin"
 			}
 			p.Pending = s.app.PendingApprovals(r.Context())
+			_ = s.app.DB.QueryRow(r.Context(), `SELECT count(*) FROM tenders WHERE status='closed'`).Scan(&p.ToAward)
 		case sess.User.IsFactory():
 			p.Area, p.Eyebrow = "factory", "Eimsky · Shipper portal"
 		case sess.User.IsViewer():

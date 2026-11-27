@@ -12,7 +12,31 @@ import (
 	"github.com/itsmepava/container/internal/domain"
 )
 
+// assetVersion busts browser caches when the server restarts with new CSS/JS.
+var assetVersion = fmt.Sprint(time.Now().Unix())
+
+type section struct{ Label, Href string }
+
 var funcs = template.FuncMap{
+	"assetVersion": func() string { return assetVersion },
+	"pathIs":       func(path, want string) bool { return path == want },
+	"sectionOf": func(path string) *section {
+		switch {
+		case strings.HasPrefix(path, "/f/bookings/"):
+			return &section{"My bookings", "/f/bookings"}
+		case strings.HasPrefix(path, "/ops/tenders/"):
+			return &section{"Bids", "/ops/tenders"}
+		case strings.HasPrefix(path, "/ops/bookings/"):
+			return &section{"Bookings", "/ops/bookings"}
+		case strings.HasPrefix(path, "/ops/sailings/"):
+			return &section{"Load planner", "/ops/plan"}
+		case strings.HasPrefix(path, "/admin/lanes/"), strings.HasPrefix(path, "/admin/sailings/"):
+			return &section{"Lanes and sailings", "/admin/lanes"}
+		case strings.HasPrefix(path, "/admin/companies/"):
+			return &section{"Companies", "/admin/companies"}
+		}
+		return nil
+	},
 	"money":      domain.Money,
 	"moneyShort": domain.MoneyShort,
 	"moneyP": func(c *int64) string {

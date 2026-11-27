@@ -666,7 +666,7 @@ func (a *App) PlaceBid(ctx context.Context, u *User, in BidInput) (*Bid, error) 
 	if !u.IsForwarder() {
 		return nil, ErrForbidden
 	}
-	if u.CompanyStatus != "approved" {
+	if u.CompanyID == 0 || u.CompanyStatus != "approved" {
 		return nil, Errf("Your company is waiting for Eimsky's approval. You can bid once it's approved.")
 	}
 	if in.AmountCents <= 0 {

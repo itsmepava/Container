@@ -9,7 +9,19 @@ Eimsky pools apparel factories' LCL raw-material imports into full containers. F
 | Forwarders | Mobile (iOS and Android) | Register with documents and lanes, get push notifications for new tenders, place sealed bids, see awards with shipper contacts and documents, upload booking confirmations |
 | JAAF / FAAMA | Web: `/insights` | Anonymised totals: volume, fill, all-in cost, cargo mix, by lane and HS code. Figures from fewer than 3 factories are hidden |
 
-## Quick start (local)
+## Quickest start (Linux or macOS, nothing to install)
+
+```bash
+git clone -b claude/practical-knuth-j3ag78 https://github.com/itsmepava/Container.git eimsky
+```
+
+```bash
+cd eimsky && ./start.sh
+```
+
+Open http://localhost:8080. The first run downloads Go and PostgreSQL into the project folder, which takes a few minutes. It doesn't need sudo or a system database. Run it as your normal user, stop it with Ctrl+C, and use `./start.sh --reset` for fresh demo data or `./start.sh --port 9000` for another port.
+
+## Quick start (local, with your own Postgres)
 
 You need Go 1.24+ (it fetches the 1.26 toolchain automatically) and PostgreSQL 14+.
 

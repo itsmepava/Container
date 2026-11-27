@@ -3,6 +3,7 @@ package domain
 import (
 	"fmt"
 	"sort"
+	"strings"
 )
 
 // Lot is one shipper's cargo as the planner sees it.
@@ -168,12 +169,13 @@ func (b *Box) Checks() []LoadCheck {
 	var names []string
 	for _, c := range Categories {
 		if cats[c] {
-			names = append(names, c.Label())
+			names = append(names, c.Short())
 		}
 	}
 	mix := "Cargo mix compatible"
 	if len(names) > 0 {
-		mix = joinAnd(names) + ": compatible"
+		mix = strings.Join(names, ", ") + ": compatible"
+		mix = strings.ToUpper(mix[:1]) + mix[1:]
 	}
 	mixOK := true
 	for i, x := range b.Lots {

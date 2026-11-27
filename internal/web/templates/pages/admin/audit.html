@@ -1,0 +1,14 @@
+{{define "content"}}
+{{template "admin-tabs" .}}
+<div class="page-head"><div><h1>Audit log</h1><div class="sub">Every change, award, override and document view. Bid prices are never logged.</div></div>
+  <form method="get"><input type="search" name="q" value="{{.D.Q}}" placeholder="Search text, person or action" style="width:280px"></form></div>
+<div class="card flush">
+<div class="table-wrap"><table class="table-card">
+  <thead><tr><th>When</th><th>Who</th><th>Action</th><th>What</th></tr></thead>
+  <tbody>
+  {{range .D.Entries}}<tr><td class="mono small nowrap">{{hm .At}}</td><td>{{.ActorName}}</td><td class="mono small">{{.Action}}</td><td>{{.Summary}}</td></tr>
+  {{else}}<tr><td colspan="4">{{template "empty" (dict "Title" "No entries" "Body" "Nothing matches that search.")}}</td></tr>{{end}}
+  </tbody>
+</table></div>
+</div>
+{{end}}

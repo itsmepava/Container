@@ -1,0 +1,38 @@
+{{define "content"}}
+{{template "admin-tabs" .}}
+<div class="page-head"><div><h1>Settings</h1><div class="sub">{{if .User.IsAdmin}}Changes apply straight away and are logged.{{else}}Only admins can change settings.{{end}}</div></div></div>
+<div class="grid cols-2" style="align-items:start">
+<form method="post" action="/admin/settings" class="card">{{template "csrf" .CSRF}}
+  <h2 style="margin-bottom:14px">Pooling and pricing</h2>
+  {{range .D.Keys}}
+  <div class="field"><label for="{{.Key}}">{{.Label}}</label><input id="{{.Key}}" name="{{.Key}}" value="{{index $.D.Values .Key}}" {{if not $.User.IsAdmin}}readonly{{end}}><div class="help">{{.Help}}</div></div>
+  {{end}}
+  {{if .User.IsAdmin}}<button class="btn primary">Save settings</button>{{end}}
+</form>
+<div class="stack">
+  <section class="card">
+    <h2 style="margin-bottom:10px">Container types</h2>
+    <div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th class="right">Internal CBM</th><th class="right">Usable</th><th class="right">Payload t</th></tr></thead><tbody>
+    {{range .D.Specs}}<tr><td class="mono"><b>{{.Code}}</b></td><td>{{.Name}}</td><td class="right">{{n1 .InternalCBM}}</td><td class="right">{{n1 (.UsableCBM $.D.Stowage)}}</td><td class="right">{{tonnes .PayloadKg}}</td></tr>{{end}}
+    </tbody></table></div>
+    {{if .User.IsAdmin}}
+    <details style="margin-top:12px"><summary class="linkbtn">Add or update a container type</summary>
+      <form method="post" action="/admin/container-types" style="margin-top:12px">{{template "csrf" .CSRF}}
+        <div class="form-row"><div class="field"><label>Code</label><input name="code" placeholder="40HC" required></div><div class="field"><label>Name</label><input name="name" placeholder="High cube"></div></div>
+        <div class="form-row"><div class="field"><label>Internal CBM</label><input name="internal" inputmode="decimal" required></div><div class="field"><label>Payload kg</label><input name="payload" inputmode="decimal" required></div></div>
+        <button class="btn">Save container type</button>
+      </form></details>
+    {{end}}
+  </section>
+  <section class="card">
+    <h2 style="margin-bottom:10px">Ports</h2>
+    <p class="muted small">{{range $i, $p := .D.Ports}}{{if $i}} · {{end}}{{$p.Label}}{{end}}</p>
+    <details style="margin-top:8px"><summary class="linkbtn">Add a port</summary>
+      <form method="post" action="/admin/ports" style="margin-top:12px">{{template "csrf" .CSRF}}
+        <div class="form-row"><div class="field"><label>UN/LOCODE</label><input name="code" placeholder="CNXMN" maxlength="5" required></div><div class="field"><label>Name</label><input name="name" placeholder="Xiamen" required></div><div class="field"><label>Country</label><input name="country" placeholder="China"></div></div>
+        <button class="btn">Save port</button>
+      </form></details>
+  </section>
+</div>
+</div>
+{{end}}

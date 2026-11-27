@@ -1,0 +1,48 @@
+{{define "content"}}
+{{$d := .D}}
+{{if not $d.Approved}}
+<div class="alert {{if eq $d.Status "pending"}}warn{{else}}bad{{end}}" style="margin-bottom:18px"><div>
+  {{if eq $d.Status "pending"}}<b>Thanks for registering.</b> Eimsky checks new factories within one working day. You'll get an email when you can book.
+  {{else}}<b>Your account is {{$d.Status}}.</b> {{$d.Note}}{{end}}
+</div></div>
+{{end}}
+<div class="page-head">
+  <div><h1>My bookings</h1><div class="sub">Track space, costs and documents for each shipment.</div></div>
+  {{if $d.Approved}}<a class="btn primary" href="/f/book">+ New booking</a>{{end}}
+</div>
+<div class="tabs">
+  <a href="/f/bookings" class="{{if ne $d.Tab "past"}}on{{end}}">Active</a>
+  <a href="/f/bookings?tab=past" class="{{if eq $d.Tab "past"}}on{{end}}">Past and cancelled</a>
+</div>
+{{if $d.Rows}}
+<div class="card flush">
+<div class="table-wrap">
+<table class="table-card">
+  <thead><tr><th>Booking</th><th>Lane · sailing</th><th class="right">CBM</th><th>Status</th><th>Next step</th><th class="right">Cost (USD)</th></tr></thead>
+  <tbody>
+  {{range $d.Rows}}{{$b := .B}}
+  <tr class="hover" data-href="/f/bookings/{{$b.ID}}">
+    <td><a href="/f/bookings/{{$b.ID}}" class="mono" style="font-weight:600">{{$b.Ref}}</a><div class="faint small">{{ago $b.CreatedAt}}</div></td>
+    <td>{{$b.Sailing.Lane.Short}}<div class="muted small">{{$b.Sailing.Label}} · {{$b.BoxCode}}{{with $b.Sailing.Vessel}} · ETD {{day .ETD}}{{end}}</div></td>
+    <td class="right mono">{{n2 $b.CBM}}</td>
+    <td>{{template "status-pill" $b.StatusLabel}}</td>
+    <td class="small">
+      {{if eq $b.Status "held"}}<span class="amber">Confirm within <span data-timer="{{isop $b.HoldExpiresAt}}">–</span></span>
+      {{else if .Missing}}<span class="amber">Upload {{docNames .Missing}}</span> <span class="faint">· cut-off in <span data-countdown="{{iso $b.Sailing.CFSCutoff}}"></span></span>
+      {{else}}{{$done := true}}{{range .Steps}}{{if .Active}}{{$done = false}}{{.Now}}{{end}}{{end}}{{if $done}}<span class="green">Complete</span>{{end}}{{end}}
+    </td>
+    <td class="right">{{if $b.Priced}}<b class="mono">{{moneyP $b.TotalCents}}</b>{{else}}<span class="muted mono">≤ {{moneyShort $b.CapCents}}</span>{{end}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table>
+</div>
+</div>
+{{else}}
+<div class="card">
+  {{if eq $d.Tab "past"}}{{template "empty" (dict "Title" "Nothing here yet" "Body" "Delivered and cancelled bookings will show here.")}}
+  {{else if $d.Approved}}{{template "empty" (dict "Title" "No active bookings" "Body" "Book only the space you need on the next pooled container." "Href" "/f/book" "Action" "Book space")}}
+  {{else}}{{template "empty" (dict "Title" "No bookings yet" "Body" "Once your factory is approved you can book space here.")}}{{end}}
+</div>
+{{end}}
+{{end}}

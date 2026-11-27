@@ -1,0 +1,39 @@
+{{/* Shared fragments. */}}
+
+{{define "csrf"}}<input type="hidden" name="csrf" value="{{.}}">{{end}}
+
+{{define "status-pill"}}<span class="pill {{statusClass .}}">{{.}}</span>{{end}}
+
+{{define "tracker"}}
+<div class="tracker">
+  {{range $i, $s := .}}
+  <div class="step{{if $s.Done}} done{{else if $s.Active}} active{{end}}">
+    <span class="n">{{if $s.Done}}✓{{else}}{{add $i 1}}{{end}}</span>
+    <div class="t">{{$s.Title}}</div>
+    <div class="d">{{$s.Detail}}</div>
+  </div>
+  {{end}}
+</div>
+{{end}}
+
+{{/* Container visualizer. Args: dict "Box" *domain.Box "Lots" []PlannedLot "Free" bool */}}
+{{define "box-vis"}}
+<div class="box-vis {{if .Large}}lg{{end}}" role="img" aria-label="{{n1 .Box.UsedCBM}} of {{n1 .Box.Usable}} CBM used">
+  {{range .Lots}}<div class="lot lot-{{.Color}}" data-lot="{{.Booking.ID}}" style="width:{{lotWidth .Booking.CBM $.Box.Usable}}" title="{{.Label}} · {{.Booking.CompanyName}} · {{n1 .Booking.CBM}} CBM · {{cat .Booking.Category}}">{{.Label}}<small>{{n1 .Booking.CBM}}</small></div>{{end}}
+  {{if gt .Box.FreeCBM 0.05}}<div class="free" style="flex:1">{{n1 .Box.FreeCBM}}<small>free</small></div>{{end}}
+</div>
+{{end}}
+
+{{define "doc-row"}}
+<div class="doc">
+  <span class="ic {{if .Doc}}ok{{end}}">{{if .Doc}}{{template "icon-check"}}{{else}}{{template "icon-file"}}{{end}}</span>
+  <div class="body">
+    <div class="name">{{.Label}}</div>
+    <div class="sub">{{if .Doc}}{{if .Doc.PurgedAt}}Deleted after handover{{else}}<a href="/docs/{{.Doc.ID}}" target="_blank" rel="noopener">{{.Doc.Filename}}</a> · {{.Doc.SizeLabel}}{{end}}{{else}}{{.Help}}{{end}}</div>
+  </div>
+</div>
+{{end}}
+
+{{define "empty"}}
+<div class="empty"><h3>{{.Title}}</h3><p>{{.Body}}</p>{{if .Href}}<a class="btn primary" href="{{.Href}}">{{.Action}}</a>{{end}}</div>
+{{end}}

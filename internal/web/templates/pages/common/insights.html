@@ -1,0 +1,44 @@
+{{define "content"}}
+{{$i := .D}}
+<div class="page-head">
+  <div><h1>One shared view of inbound raw materials</h1><div class="sub">Week {{$i.FromWeek}} to Week {{$i.ToWeek}} · totals only, never a factory's name or price · figures from fewer than {{$i.K}} factories are hidden</div></div>
+  <div class="row">{{range list2s "4" "8"}}<a class="chip {{if eq (printf "%d" $i.Weeks) .}}on{{end}}" href="?weeks={{.}}">{{.}} weeks</a>{{end}}<a class="chip {{if eq $i.Weeks 13}}on{{end}}" href="?weeks=13">Quarter</a><a class="chip {{if eq $i.Weeks 26}}on{{end}}" href="?weeks=26">6 months</a></div>
+</div>
+{{if $i.Suppressed}}
+<div class="card">{{template "empty" (dict "Title" "Not enough data yet" "Body" (printf "Figures appear once at least %d factories ship in the period, so no single factory can be identified." $i.K))}}</div>
+{{else}}
+<div class="grid cols-4" style="margin-bottom:18px">
+  <div class="card stat"><div class="label">Inbound volume</div><div class="value">{{n0 $i.InboundCBM}} CBM</div><div class="hint">{{plural $i.Sailings "sailing" "sailings"}} · {{$i.Factories}} factories</div></div>
+  <div class="card stat"><div class="label">Average fill</div><div class="value">{{pct $i.AvgFillPct}}</div><div class="hint">of usable space, {{plural $i.Containers "container" "containers"}}</div></div>
+  <div class="card stat"><div class="label">All-in cost</div><div class="value">{{if gt $i.AllInPerCBM 0.0}}${{n1 $i.AllInPerCBM}}{{else}}–{{end}}</div><div class="hint">per W/M{{if gt $i.ColoadRate 0.0}} vs ${{n0 $i.ColoadRate}} co-load{{end}}</div></div>
+  <div class="card stat"><div class="label">Cargo mix</div><div class="value">{{pct $i.FabricPct}}</div><div class="hint">fabric · the rest trims and packaging</div></div>
+</div>
+<div class="grid cols-2" style="align-items:start">
+  <section class="card">
+    <h3 style="margin-bottom:10px">Volume by week</h3>
+    {{$max := 0.0}}{{range $i.ByWeek}}{{if gt .CBM $max}}{{$max = .CBM}}{{end}}{{end}}
+    {{range $i.ByWeek}}<div class="hbar"><span>{{.Label}}</span><span class="track">{{if not .Hidden}}<span style="width:{{pctw (mul (div .CBM $max) 100)}};background:var(--primary)"></span>{{end}}</span><span class="v">{{if .Hidden}}<span class="faint">hidden</span>{{else}}{{n0 .CBM}}{{end}}</span></div>{{end}}
+    <p class="faint small" style="margin:8px 0 0">CBM booked per sailing week, all lanes.</p>
+  </section>
+  <section class="card">
+    <h3 style="margin-bottom:10px">Cargo mix</h3>
+    {{range $i.Mix}}<div class="hbar"><span>{{.Label}}</span><span class="track"><span style="width:{{pctw .Pct}};background:var(--green)"></span></span><span class="v">{{pct .Pct}}</span></div>{{end}}
+  </section>
+  <section class="card">
+    <h3 style="margin-bottom:10px">By lane</h3>
+    <table><thead><tr><th>Lane</th><th class="right">CBM</th><th class="right">Factories</th></tr></thead><tbody>
+    {{range $i.ByLane}}<tr><td>{{.Label}}</td><td class="right mono">{{if .Hidden}}<span class="faint">hidden</span>{{else}}{{n1 .CBM}}{{end}}</td><td class="right">{{if .Hidden}}&lt; {{$i.K}}{{else}}{{.Factories}}{{end}}</td></tr>{{end}}
+    </tbody></table>
+    <p class="faint small" style="margin:8px 0 0">Use in Port and Customs talks: real volumes by lane.</p>
+  </section>
+  <section class="card">
+    <h3 style="margin-bottom:10px">Top imported materials by HS code</h3>
+    <table><thead><tr><th>HS code</th><th class="right">CBM</th></tr></thead><tbody>
+    {{range $i.TopHS}}<tr><td class="small">{{.Label}}</td><td class="right mono">{{if .Hidden}}<span class="faint">hidden</span>{{else}}{{n1 .CBM}}{{end}}</td></tr>{{end}}
+    </tbody></table>
+    <p class="faint small" style="margin:8px 0 0">For local sourcing (FAAMA): which fabrics and trims are imported.</p>
+  </section>
+</div>
+{{if gt $i.SavingPct 0.0}}<div class="alert good" style="margin-top:18px">Member savings: pooled boxes came in {{n0 $i.SavingPct}}% below the co-load rate on average, all in.</div>{{end}}
+{{end}}
+{{end}}

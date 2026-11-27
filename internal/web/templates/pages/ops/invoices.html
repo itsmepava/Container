@@ -1,0 +1,27 @@
+{{define "content"}}
+<div class="page-head"><div><h1>Invoices</h1><div class="sub">Issued automatically once a booking is priced and its documents are complete.</div></div></div>
+<div class="grid cols-3" style="margin-bottom:18px">
+  <div class="card stat"><div class="label">Outstanding</div><div class="value">USD {{money .D.Due}}</div></div>
+  <div class="card stat"><div class="label">Paid</div><div class="value">USD {{money .D.Paid}}</div></div>
+  <div class="card stat"><div class="label">Invoices</div><div class="value">{{len .D.Invoices}}</div></div>
+</div>
+<div class="tabs">
+  <a href="/ops/invoices" class="{{if eq .D.Status ""}}on{{end}}">All</a>
+  <a href="/ops/invoices?status=issued" class="{{if eq .D.Status "issued"}}on{{end}}">Outstanding</a>
+  <a href="/ops/invoices?status=paid" class="{{if eq .D.Status "paid"}}on{{end}}">Paid</a>
+</div>
+<div class="card flush">
+{{if .D.Invoices}}
+<div class="table-wrap"><table class="table-card">
+  <thead><tr><th>Invoice</th><th>Factory</th><th>Booking</th><th>Issued</th><th class="right">Total USD</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {{range .D.Invoices}}
+  <tr><td class="mono"><a href="/ops/invoices/{{.ID}}.pdf" target="_blank" rel="noopener">{{.Number}}</a></td><td>{{.CompanyName}}</td><td><a class="mono" href="/ops/bookings/{{.BookingID}}">{{.BookingRef}}</a></td><td>{{date .IssuedAt}}</td>
+    <td class="right mono"><b>{{money .TotalCents}}</b></td><td>{{template "status-pill" .Status}}</td>
+    <td class="right"><form method="post" action="/ops/invoices/{{.ID}}/paid" class="inline-form" data-keep-scroll>{{template "csrf" $.CSRF}}<input type="hidden" name="paid" value="{{if eq .Status "paid"}}0{{else}}1{{end}}"><button class="btn sm">{{if eq .Status "paid"}}Mark unpaid{{else}}Mark paid{{end}}</button></form></td></tr>
+  {{end}}
+  </tbody>
+</table></div>
+{{else}}{{template "empty" (dict "Title" "No invoices" "Body" "Invoices appear after awards, once documents are in.")}}{{end}}
+</div>
+{{end}}

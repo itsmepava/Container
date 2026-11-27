@@ -1,0 +1,22 @@
+{{define "content"}}
+<div class="eyebrow">Welcome back</div>
+<h1 style="margin:6px 0 22px;font-size:26px">Sign in to Eimsky</h1>
+<form method="post" action="/login" novalidate>
+  <input type="hidden" name="next" value="{{.D.Next}}">
+  <div class="field"><label for="email">Work email</label><input id="email" type="email" name="email" value="{{.D.Email}}" autocomplete="username" required autofocus></div>
+  <div class="field"><div class="row between"><label for="password">Password</label><a href="/forgot" class="small">Forgot it?</a></div><input id="password" type="password" name="password" autocomplete="current-password" required></div>
+  <button class="btn primary block lg" type="submit">Sign in</button>
+</form>
+<p class="muted small" style="margin-top:18px">New factory? <a href="/signup">Register your factory</a> · Forwarders use the Eimsky mobile app.</p>
+{{if .D.Demo}}
+<div class="demo">
+  <div class="eyebrow muted" style="margin-bottom:6px">Demo accounts · password eimsky-demo</div>
+  <div class="row" style="gap:4px 14px">
+    <button data-fill-email="factory@eimsky.test" data-fill-password="eimsky-demo">factory@</button>
+    <button data-fill-email="ops@eimsky.test" data-fill-password="eimsky-demo">ops@</button>
+    <button data-fill-email="admin@eimsky.test" data-fill-password="eimsky-demo">admin@</button>
+    <button data-fill-email="jaaf@eimsky.test" data-fill-password="eimsky-demo">jaaf@</button>
+  </div>
+</div>
+{{end}}
+{{end}}

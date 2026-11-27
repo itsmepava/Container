@@ -200,7 +200,14 @@ type PoolSpace struct {
 	Grades     map[domain.Grade]bool
 }
 
-func (p PoolSpace) Free() float64 { return domain.Round(p.Usable-p.Used, 2) }
+// Free is the space left, never below zero (a pool can be overbooked while ops plans).
+func (p PoolSpace) Free() float64 {
+	f := domain.Round(p.Usable-p.Used, 2)
+	if f < 0 {
+		return 0
+	}
+	return f
+}
 func (p PoolSpace) FillPct() float64 {
 	if p.Usable <= 0 {
 		return 0
@@ -542,6 +549,7 @@ type Step struct {
 	Detail string
 	Done   bool
 	Active bool
+	Now    string // what is happening while this step is the active one
 }
 
 // Progress returns the five tracker steps for a booking.
@@ -576,7 +584,12 @@ func (a *App) Progress(ctx context.Context, b *Booking) []Step {
 	} else if closed {
 		steps[2].Detail = fmt.Sprintf("%d forwarders bid", bidders)
 	}
+	waiting := []string{"Confirm your booking", "Waiting for the plan to lock", "Forwarders are bidding", "Eimsky is choosing the forwarder", "Invoice follows once documents are in"}
+	if b.Mode == "coload" {
+		waiting[2] = "Co-load being arranged"
+	}
 	for i := range steps {
+		steps[i].Now = waiting[i]
 		if !steps[i].Done {
 			steps[i].Active = true
 			break
@@ -586,3 +599,27 @@ func (a *App) Progress(ctx context.Context, b *Booking) []Step {
 }
 
 func fmtTime(t time.Time) string { return t.In(domain.Colombo).Format("Mon 2 Jan 15:04") }
+
+// SearchBookings lists bookings for staff with optional text and status filters.
+func (a *App) SearchBookings(ctx context.Context, q, status string, sailingID int64, limit int) ([]*Booking, error) {
+	q = strings.TrimSpace(q)
+	bs, err := a.queryBookings(ctx, a.DB, `($1='' OR b.ref ILIKE '%'||$1||'%' OR c.name ILIKE '%'||$1||'%')
+		AND ($2='' OR b.status=$2 OR ($2='unplaced' AND b.status='booked' AND b.mode='pool' AND b.container_id IS NULL) OR ($2='coload' AND b.mode='coload' AND b.status='booked'))
+		AND ($3=0 OR b.sailing_id=$3)
+		ORDER BY b.created_at DESC LIMIT $4`, q, status, sailingID, limit)
+	if err != nil {
+		return nil, err
+	}
+	cache := map[int64]*Sailing{}
+	for _, b := range bs {
+		if s, ok := cache[b.SailingID]; ok {
+			b.Sailing = s
+			continue
+		}
+		if b.Sailing, err = a.SailingByID(ctx, b.SailingID); err != nil {
+			return nil, err
+		}
+		cache[b.SailingID] = b.Sailing
+	}
+	return bs, nil
+}

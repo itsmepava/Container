@@ -1,0 +1,24 @@
+{{define "content"}}
+<div class="page-head"><div><h1>Invoices</h1><div class="sub">One invoice per booking, issued once documents are complete.</div></div></div>
+<div class="grid cols-3" style="margin-bottom:18px">
+  <div class="card stat"><div class="label">Outstanding</div><div class="value">USD {{money .D.Due}}</div></div>
+  <div class="card stat"><div class="label">Paid</div><div class="value">USD {{money .D.Paid}}</div></div>
+  <div class="card stat"><div class="label">Invoices</div><div class="value">{{len .D.Invoices}}</div></div>
+</div>
+<div class="card flush">
+{{if .D.Invoices}}
+<div class="table-wrap"><table class="table-card">
+  <thead><tr><th>Invoice</th><th>Booking</th><th>Issued</th><th class="right">Freight</th><th class="right">Fee</th><th class="right">Total (USD)</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {{range .D.Invoices}}
+  <tr><td class="mono">{{.Number}}</td><td><a class="mono" href="/f/bookings/{{.BookingID}}">{{.BookingRef}}</a></td><td>{{date .IssuedAt}}</td>
+    <td class="right mono">{{money .FreightCents}}</td><td class="right mono">{{money .FeeCents}}</td><td class="right mono"><b>{{money .TotalCents}}</b></td>
+    <td>{{template "status-pill" .Status}}</td><td class="right"><a class="btn sm" href="/f/bookings/{{.BookingID}}/invoice.pdf" target="_blank" rel="noopener">PDF</a></td></tr>
+  {{end}}
+  </tbody>
+</table></div>
+{{else}}
+{{template "empty" (dict "Title" "No invoices yet" "Body" "Invoices appear here after a forwarder is awarded and your documents are uploaded.")}}
+{{end}}
+</div>
+{{end}}

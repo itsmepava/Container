@@ -1,0 +1,31 @@
+{{define "content"}}
+<div class="page-head"><div><h1>Forwarder bids</h1><div class="sub">Sealed tenders, one per container. Award once bids close.</div></div></div>
+<div class="tabs">
+  <a href="/ops/tenders" class="{{if eq .D.Status ""}}on{{end}}">All</a>
+  <a href="/ops/tenders?status=closed" class="{{if eq .D.Status "closed"}}on{{end}}">Ready to award</a>
+  <a href="/ops/tenders?status=open" class="{{if eq .D.Status "open"}}on{{end}}">Open</a>
+  <a href="/ops/tenders?status=awarded" class="{{if eq .D.Status "awarded"}}on{{end}}">Awarded</a>
+</div>
+<div class="card flush">
+{{if .D.Tenders}}
+<div class="table-wrap"><table class="table-card">
+  <thead><tr><th>Tender</th><th>Lane · sailing</th><th>Box</th><th class="right">Cargo</th><th class="right">Bids</th><th>Closes</th><th>Status</th></tr></thead>
+  <tbody>
+  {{range .D.Tenders}}
+  <tr class="hover" data-href="/ops/tenders/{{.ID}}">
+    <td><a class="mono" href="/ops/tenders/{{.ID}}"><b>{{.Ref}}</b></a></td>
+    <td>{{.Sailing.Lane.Short}}<div class="muted small">{{.Sailing.Label}} · {{.Vessel.Label}}</div></td>
+    <td>1 × {{.Container.BoxCode}}</td>
+    <td class="right mono">{{n1 .CBM}} CBM<div class="faint small">{{tonnes .Kg}} t · {{.Lots}} lots</div></td>
+    <td class="right">{{.BidCount}}</td>
+    <td>{{dt .ClosesAt}}{{if eq .Status "open"}}<div class="faint small"><span data-countdown="{{iso .ClosesAt}}"></span> left</div>{{end}}</td>
+    <td>{{if eq .Status "closed"}}<span class="pill amber">Award now</span>{{else}}{{template "status-pill" .StatusLabel}}{{end}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table></div>
+{{else}}
+{{template "empty" (dict "Title" "No tenders here" "Body" "Lock a plan in the load planner to open bidding." "Href" "/ops/plan" "Action" "Open load planner")}}
+{{end}}
+</div>
+{{end}}

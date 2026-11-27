@@ -1,0 +1,29 @@
+{{define "content"}}
+{{template "admin-tabs" .}}
+<div class="page-head"><div><h1>Users</h1><div class="sub">{{if .D.Q}}Search results across all companies{{else}}Eimsky staff. Search to find anyone.{{end}}</div></div>
+  <div class="row"><form method="get"><input type="search" name="q" value="{{.D.Q}}" placeholder="Name, email, phone or company" style="width:260px"></form>
+  {{if .User.IsAdmin}}<button class="btn primary" data-open="invite-dlg">+ Invite</button>{{end}}</div></div>
+<div class="card flush">
+<div class="table-wrap"><table class="table-card">
+  <thead><tr><th>Name</th><th>Company</th><th>Role</th><th>Email / phone</th><th>Last sign-in</th><th></th></tr></thead>
+  <tbody>
+  {{range .D.Users}}
+  <tr class="{{if not .Active}}muted-row{{end}}"><td><b>{{if .Name}}{{.Name}}{{else}}–{{end}}</b>{{if not .Active}} <span class="pill red">Off</span>{{end}}</td><td>{{if .CompanyID}}<a href="/admin/companies/{{.CompanyID}}">{{.CompanyName}}</a>{{else}}Eimsky{{end}}</td><td>{{.Role.Label}}</td><td>{{.Email}}{{if .Phone}} <span class="muted">{{.Phone}}</span>{{end}}</td><td>{{dtp .LastLoginAt}}</td>
+    <td class="right">{{if and $.User.IsAdmin (ne .ID $.User.ID)}}<form method="post" action="/admin/users/{{.ID}}/active" class="inline-form" data-keep-scroll>{{template "csrf" $.CSRF}}<input type="hidden" name="active" value="{{if .Active}}0{{else}}1{{end}}"><button class="btn sm {{if .Active}}danger{{end}}">{{if .Active}}Deactivate{{else}}Reactivate{{end}}</button></form>{{end}}</td></tr>
+  {{else}}<tr><td colspan="6">{{template "empty" (dict "Title" "No users found" "Body" "Try another search.")}}</td></tr>{{end}}
+  </tbody>
+</table></div>
+</div>
+<dialog id="invite-dlg">
+  <form method="post" action="/admin/users/invite">{{template "csrf" .CSRF}}
+    <div class="d-head"><h2>Invite a user</h2></div>
+    <div class="d-body">
+      <div class="field"><label>Name</label><input name="name" required></div>
+      <div class="field"><label>Email</label><input type="email" name="email" required></div>
+      <div class="field"><label>Role</label><select name="role"><option value="ops">Eimsky ops</option><option value="admin">Eimsky admin</option><option value="viewer">Association viewer</option></select></div>
+      <div class="field"><label>Association <span class="faint">(viewers only)</span></label><select name="company"><option value="0">–</option>{{range .D.Assoc}}<option value="{{.ID}}">{{.Name}}</option>{{end}}</select></div>
+    </div>
+    <div class="d-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Send invitation</button></div>
+  </form>
+</dialog>
+{{end}}

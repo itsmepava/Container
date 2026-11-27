@@ -1,0 +1,22 @@
+{{define "mainclass"}}narrow{{end}}
+{{define "content"}}
+<div class="page-head">
+  <div><h1>Notifications</h1><div class="sub">Updates on your bookings, tenders and approvals.</div></div>
+  {{if gt .Unread 0}}<form method="post" action="/notifications/read">{{template "csrf" .CSRF}}<input type="hidden" name="id" value="0"><button class="btn sm">Mark all as read</button></form>{{end}}
+</div>
+<div class="card flush">
+  {{if .D}}
+  <ul class="notes">
+    {{range .D}}
+    <li class="{{if not .Read}}unread{{end}}"><a href="/notifications/{{.ID}}">
+      <span class="dotcol"></span>
+      <span style="flex:1;min-width:0"><span class="t">{{.Title}}</span>{{if .Body}}<span class="muted small" style="display:block">{{.Body}}</span>{{end}}</span>
+      <span class="faint small nowrap">{{ago .CreatedAt}}</span>
+    </a></li>
+    {{end}}
+  </ul>
+  {{else}}
+  {{template "empty" (dict "Title" "You're all caught up" "Body" "New updates on your bookings and tenders will show up here.")}}
+  {{end}}
+</div>
+{{end}}

@@ -1,0 +1,17 @@
+{{define "content"}}
+{{if .D.Err}}
+  <h1 style="margin:0 0 10px;font-size:24px">This link doesn't work</h1>
+  <div class="alert warn">{{.D.Err}}</div>
+  <p style="margin-top:16px"><a class="btn" href="/forgot">Get a new link</a></p>
+{{else}}
+  <div class="eyebrow">{{if eq .D.Kind "invite"}}Welcome to Eimsky{{else}}Password reset{{end}}</div>
+  <h1 style="margin:6px 0 6px;font-size:26px">{{.Title}}</h1>
+  <p class="muted" style="margin-bottom:20px">{{.D.User.Name}} · {{.D.User.Email}}</p>
+  <form method="post" action="/{{.D.Kind}}">
+    <input type="hidden" name="token" value="{{.D.Token}}">
+    <div class="field"><label for="password">New password</label><input id="password" type="password" name="password" minlength="8" autocomplete="new-password" required autofocus><div class="help">At least 8 characters.</div></div>
+    <div class="field"><label for="confirm">Type it again</label><input id="confirm" type="password" name="confirm" minlength="8" autocomplete="new-password" required></div>
+    <button class="btn primary block lg" type="submit">Save password</button>
+  </form>
+{{end}}
+{{end}}

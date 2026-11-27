@@ -1,0 +1,74 @@
+{{define "content"}}
+{{$d := .D}}
+<div class="page-head">
+  <div>
+    <h1>Import lane pools · Week {{$d.Week}}</h1>
+    <div class="sub">{{if $d.NextDecision}}Next decision: {{$d.NextDecision.Sailing.Lane.Short}} · <span class="amber">{{dt $d.NextDecision.Sailing.PlanLockAt}}</span> (<span data-countdown="{{iso $d.NextDecision.Sailing.PlanLockAt}}"></span>){{else}}No open pools this week.{{end}}</div>
+  </div>
+  <div class="row">
+    <a class="btn sm" href="/ops/pools?year={{$d.PrevY}}&week={{$d.PrevW}}">‹ Week {{$d.PrevW}}</a>
+    <a class="btn sm" href="/ops/pools">This week</a>
+    <a class="btn sm" href="/ops/pools?year={{$d.NextY}}&week={{$d.NextW}}">Week {{$d.NextW}} ›</a>
+  </div>
+</div>
+
+{{if $d.Cards}}
+<div class="grid cols-4" style="margin-bottom:22px">
+  {{range $d.Cards}}
+  <a class="pool {{if and $d.Selected (eq .Sailing.ID $d.Selected.Sailing.ID)}}on{{end}}" href="/ops/pools?year={{$d.Year}}&week={{$d.Week}}&s={{.Sailing.ID}}">
+    <div class="top"><span class="lane">{{.Sailing.Lane.Short}}</span><span class="pill {{badgeClass .Badge}}">{{.Badge}}</span></div>
+    <div class="meta">{{.Sailing.Label}} · {{.BoxCode}}{{if gt .Containers 1}} ×{{.Containers}}{{end}} · {{plural .Shippers "shipper" "shippers"}}{{if gt .Overflow 0.0}} · <span class="amber">+{{n1 .Overflow}} over</span>{{end}}</div>
+    <div class="fill"><span class="mono">{{n1 .Used}} / {{n1 .Usable}} CBM</span><b>{{pct .FillPct}}</b></div>
+    <div class="meter {{if lt .FillPct .BreakEvenPct}}amber{{end}}"><span style="width:{{pctw .FillPct}}"></span></div>
+  </a>
+  {{end}}
+</div>
+{{else}}
+<div class="card">{{template "empty" (dict "Title" "No sailings this week" "Body" "Create sailings for this week in Lanes and sailings." "Href" "/admin/lanes" "Action" "Lanes and sailings")}}</div>
+{{end}}
+
+{{with $d.Plan}}{{$p := .}}{{$s := $p.Sailing}}
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>{{$s.Lane.Short}}, {{$s.Label}}: {{if eq $s.Status "open"}}finalize {{with $p.PrimaryBox}}one {{.Container.BoxCode}}{{else}}the pool{{end}}{{else}}{{lower $s.StatusLabel}}{{end}}</h2>
+      <div class="muted small">{{if $p.PoolOptions}}{{range $p.PoolOptions}}{{if .Recommended}}Cheapest for shippers: {{.Title}}{{end}}{{end}} · {{end}}{{n1 $p.RequestedCBM}} CBM requested · plan locks {{dt $s.PlanLockAt}}</div>
+    </div>
+    <a class="btn" href="/ops/sailings/{{$s.ID}}/plan">Open load planner →</a>
+  </div>
+  {{if eq $s.Status "open"}}
+  {{if $p.PoolOptions}}
+  <div class="grid cols-3">
+    {{range $p.PoolOptions}}
+    <form method="post" action="/ops/sailings/{{$s.ID}}/decide" class="option {{if .Recommended}}rec{{end}}" data-confirm="{{if eq .Key "coload"}}Send every lot on this sailing to the co-load partner? Shippers will be told their cost.{{else if eq .Key "hybrid"}}Switch to a {{.BoxCode}} and co-load what doesn't fit?{{end}}">
+      {{template "csrf" $.CSRF}}<input type="hidden" name="option" value="{{.Key}}">
+      <div>
+        {{if .Recommended}}<span class="pill green" style="margin-bottom:6px">RECOMMENDED</span>{{end}}
+        <div style="font-weight:700">{{.Title}}</div>
+        <div class="muted small">{{.Detail}}</div>
+        <button class="btn sm {{if .Recommended}}green{{end}}" style="margin-top:10px">{{if eq .Key "own"}}Plan own box{{else}}Choose{{end}}</button>
+      </div>
+      <div class="p">USD {{n0 .PerCBM}}<span class="muted small" style="font-weight:500"> / CBM</span></div>
+    </form>
+    {{end}}
+  </div>
+  {{else}}<p class="muted">No bookings yet.</p>{{end}}
+  {{end}}
+  <div class="grid cols-2" style="margin-top:18px">
+    <div>
+      <h3 style="margin-bottom:8px">Load and weight checks</h3>
+      <ul class="checks">
+        {{range $p.Boxes}}{{range .Box.Checks}}<li class="{{if not .OK}}no{{end}}">{{.Label}}</li>{{end}}{{end}}
+        {{range $p.Warnings}}<li class="bad">{{.}}</li>{{end}}
+        {{if $p.Unplaced}}<li class="bad">{{len $p.Unplaced}} overflow lot(s) ({{range $i, $u := $p.Unplaced}}{{if $i}}, {{end}}{{n1 $u.Booking.CBM}} CBM{{end}})</li>{{end}}
+      </ul>
+    </div>
+    <div>
+      {{with $p.PrimaryBox}}{{template "box-vis" (dict "Box" .Box "Lots" .Lots)}}
+      <div class="box-ends"><span>Nose</span><span>{{n1 .Box.UsedCBM}} / {{n1 .Box.Usable}} CBM · {{pct .Box.FillPct}}</span><span>Doors</span></div>{{end}}
+      <p class="muted small" style="margin-top:10px">Break-even with co-load at {{n1 $p.BreakEvenCBM}} CBM ({{pct $p.BreakEvenPct}} full), freight only, on an expected bid of USD {{usd0 $p.ExpectedBid}}.</p>
+    </div>
+  </div>
+</section>
+{{end}}
+{{end}}

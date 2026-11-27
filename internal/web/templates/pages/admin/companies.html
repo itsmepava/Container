@@ -1,0 +1,40 @@
+{{define "content"}}
+{{template "admin-tabs" .}}
+<div class="page-head"><div><h1>Companies</h1><div class="sub">Approve factories and forwarders, and manage association viewers.</div></div>
+  <button class="btn primary" data-open="new-co">+ Add factory or association</button></div>
+<div class="row" style="margin-bottom:14px">
+  {{$k := .D.Kind}}{{$st := .D.Status}}
+  <a class="chip {{if eq $k ""}}on{{end}}" href="?status={{$st}}">All</a>
+  <a class="chip {{if eq $k "factory"}}on{{end}}" href="?kind=factory&status={{$st}}">Factories</a>
+  <a class="chip {{if eq $k "forwarder"}}on{{end}}" href="?kind=forwarder&status={{$st}}">Forwarders</a>
+  <a class="chip {{if eq $k "association"}}on{{end}}" href="?kind=association&status={{$st}}">Associations</a>
+  <span class="spacer"></span>
+  <a class="chip {{if eq $st "pending"}}on{{end}}" href="?kind={{$k}}&status=pending">Waiting for approval{{if gt .Pending 0}} · {{.Pending}}{{end}}</a>
+  <form method="get" class="row"><input type="hidden" name="kind" value="{{$k}}"><input type="search" name="q" value="{{.D.Q}}" placeholder="Search name" class="input-sm" style="width:200px"></form>
+</div>
+<div class="card flush">
+{{if .D.Companies}}
+<div class="table-wrap"><table class="table-card">
+  <thead><tr><th>Company</th><th>Type</th><th>Registration</th><th class="right">Users</th><th>Since</th><th>Status</th></tr></thead>
+  <tbody>
+  {{range .D.Companies}}
+  <tr class="hover" data-href="/admin/companies/{{.ID}}"><td><a href="/admin/companies/{{.ID}}"><b>{{.Name}}</b></a></td><td>{{.KindLabel}}</td><td class="mono small">{{.RegNumber}}</td><td class="right">{{.Users}}</td><td>{{date .CreatedAt}}</td>
+    <td>{{if eq .Status "pending"}}<span class="pill amber">Review</span>{{else}}{{template "status-pill" .Status}}{{end}}</td></tr>
+  {{end}}
+  </tbody>
+</table></div>
+{{else}}{{template "empty" (dict "Title" "Nothing here" "Body" "No companies match these filters.")}}{{end}}
+</div>
+<dialog id="new-co">
+  <form method="post" action="/admin/companies">{{template "csrf" .CSRF}}
+    <div class="d-head"><h2>Add a company</h2><p class="muted small">It's approved straight away, and the contact gets an email to set a password. Forwarders register in the mobile app.</p></div>
+    <div class="d-body">
+      <div class="field"><label>Type</label><select name="kind"><option value="factory">Factory</option><option value="association">Association (read-only insights)</option></select></div>
+      <div class="field"><label>Company name</label><input name="name" required></div>
+      <div class="field"><label>Registration no. <span class="faint">(optional)</span></label><input name="reg"></div>
+      <div class="form-row"><div class="field"><label>Contact name</label><input name="contact" required></div><div class="field"><label>Contact email</label><input type="email" name="email" required></div></div>
+    </div>
+    <div class="d-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn primary">Add and invite</button></div>
+  </form>
+</dialog>
+{{end}}

@@ -1,0 +1,37 @@
+{{define "mainclass"}}narrow{{end}}
+{{define "content"}}
+{{$f := .D}}
+<div class="page-head"><div><a href="/admin/lanes" class="small">‹ Lanes and sailings</a><h1 style="margin-top:4px">New sailing</h1><div class="sub">Opens a week for booking with a first container from the lane's defaults.</div></div></div>
+<form method="post" action="/admin/sailings" class="stack">{{template "csrf" .CSRF}}
+  <section class="card">
+    <div class="form-row">
+      <div class="field"><label for="lane">Lane</label><select id="lane" name="lane">{{range $f.Lanes}}<option value="{{.ID}}" {{if eq .ID $f.LaneID}}selected{{end}}>{{.Short}}</option>{{end}}</select></div>
+      <div class="field"><label for="week">ISO week</label><input id="week" name="week" inputmode="numeric" value="{{$f.Week}}"></div>
+      <div class="field"><label for="year">Year</label><input id="year" name="year" inputmode="numeric" value="{{$f.Year}}"></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label for="lock">Plan locks</label><input id="lock" type="datetime-local" name="lock" value="{{local $f.Lock}}"></div>
+      <div class="field"><label for="close">Bids close</label><input id="close" type="datetime-local" name="close" value="{{local $f.Close}}"></div>
+      <div class="field"><label for="cutoff">CFS cut-off</label><input id="cutoff" type="datetime-local" name="cutoff" value="{{local $f.Cutoff}}"></div>
+    </div>
+    <p class="muted small">Times are Colombo time. Order: plan locks → bids close → CFS cut-off.</p>
+  </section>
+  {{range $i, $v := (list2 $f.VA $f.VB)}}{{$p := index (list2s "a_" "b_") $i}}
+  <section class="card">
+    <h3 style="margin-bottom:10px">{{if eq $i 0}}Default vessel{{else}}Alternative vessel <span class="faint small">(optional)</span>{{end}}</h3>
+    <div class="form-row">
+      <div class="field"><label>Name</label><input name="{{$p}}name" value="{{$v.Name}}" placeholder="MV Kelani Star"></div>
+      <div class="field"><label>Voyage</label><input name="{{$p}}voyage" value="{{$v.Voyage}}" placeholder="049W"></div>
+      <div class="field"><label>Service</label><select name="{{$p}}service"><option value="standard" {{if eq $v.Service "standard"}}selected{{end}}>Standard</option><option value="fast" {{if eq $v.Service "fast"}}selected{{end}}>Fast</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>ETD</label><input type="datetime-local" name="{{$p}}etd" value="{{local $v.ETD}}"></div>
+      <div class="field"><label>ETA</label><input type="datetime-local" name="{{$p}}eta" value="{{local $v.ETA}}"></div>
+      <div class="field"><label>Via <span class="faint">(transhipment)</span></label><input name="{{$p}}via" value="{{$v.Via}}" placeholder="Direct"></div>
+      <div class="field"><label>Extra per box (USD)</label><input name="{{$p}}extra" inputmode="decimal" value="{{if $v.ExtraPerBox}}{{n0 $v.ExtraPerBox}}{{end}}" placeholder="0"></div>
+    </div>
+  </section>
+  {{end}}
+  <div><button class="btn primary lg">Create sailing</button></div>
+</form>
+{{end}}

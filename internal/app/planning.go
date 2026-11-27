@@ -122,6 +122,7 @@ type Planner struct {
 	Specs        []domain.ContainerSpec
 	ColoadRate   float64
 	ExpectedBid  float64
+	OwnPerCBM    float64 // expected freight per CBM for what is in the first box now
 }
 
 func (p *Planner) CanLock() bool { return len(p.Blockers) == 0 }
@@ -225,6 +226,9 @@ func (a *App) Planner(ctx context.Context, sailingID int64) (*Planner, error) {
 	p.PoolOptions = domain.PoolOptions(specs, st.Stowage, p.RequestedCBM, ownCode, s.Lane.Rates, s.Lane.ColoadRate)
 	p.ExpectedBid = s.Lane.Rates[ownCode]
 	p.BreakEvenCBM = domain.BreakEvenCBM(p.ExpectedBid, s.Lane.ColoadRate)
+	if pb := p.PrimaryBox(); pb != nil && pb.Box.UsedCBM() > 0 {
+		p.OwnPerCBM = p.ExpectedBid / pb.Box.UsedCBM()
+	}
 	if spec, ok := domain.SpecByCode(specs, ownCode); ok {
 		p.BreakEvenPct = p.BreakEvenCBM / spec.UsableCBM(st.Stowage) * 100
 	}

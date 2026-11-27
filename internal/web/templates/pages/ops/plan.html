@@ -1,0 +1,208 @@
+{{define "heading"}}Plan containers before forwarder bidding{{end}}
+{{define "subbar"}}{{$d := .D}}{{$s := $d.P.Sailing}}
+<div class="subbar"><div class="subbar-in">
+  <div class="field" style="margin:0;min-width:260px"><label>Lane</label>
+    <select data-nav aria-label="Lane">
+      {{range $d.Lanes}}<option value="/ops/plan?lane={{.ID}}" {{if eq .ID $s.Lane.ID}}selected{{end}}>{{.Label}}</option>{{end}}
+    </select></div>
+  <div class="field" style="margin:0;min-width:180px"><label>Sailing week</label>
+    <select data-nav aria-label="Sailing week">
+      {{range $d.Sailings}}<option value="/ops/sailings/{{.ID}}/plan" {{if eq .ID $s.ID}}selected{{end}}>{{.Label}} · {{.StatusLabel}}</option>{{end}}
+    </select></div>
+  <div class="spacer"></div>
+  <span class="pill amber" style="font-size:12px;padding:5px 10px">CFS cut-off {{dt $s.CFSCutoff}} · plan locks {{dt $s.PlanLockAt}}</span>
+</div></div>
+{{end}}
+{{define "content"}}
+{{$d := .D}}{{$p := $d.P}}{{$s := $p.Sailing}}
+{{if $d.Locked}}
+<div class="alert info" style="margin-bottom:18px"><div><b>This plan is locked ({{lower $s.StatusLabel}}).</b>
+  {{range $p.Boxes}}{{with .Tender}} <a href="/ops/tenders/{{.ID}}">{{.Ref}}</a> · {{.Status}} · {{.Bids}} bid(s).{{end}}{{end}}
+  {{if eq $s.Status "coload"}}Every lot goes with the co-load partner.{{end}}</div></div>
+{{end}}
+<div class="grid cols-main">
+<div class="stack">
+
+  <section class="card">
+    <h2 style="margin-bottom:12px">1 · Vessel for {{$s.Label}}</h2>
+    <form method="post" action="/ops/sailings/{{$s.ID}}/vessel" class="grid cols-2" data-keep-scroll>
+      {{template "csrf" $.CSRF}}
+      {{range $s.Vessels}}
+      <label class="radio-card {{if eq .ID $s.Vessel.ID}}on{{end}}">
+        <input type="radio" name="vessel" value="{{.ID}}" {{if eq .ID $s.Vessel.ID}}checked{{end}} {{if $d.Locked}}disabled{{end}} data-autosubmit>
+        <span><b>{{.Label}} · {{.ServiceLabel}}</b>{{if and (eq .ID $s.Vessel.ID) (not .IsDefault)}} <span class="pill solid" style="font-size:10px">OVERRIDE</span>{{end}}
+          <span class="muted small" style="display:block">ETD {{day .ETD}} · ETA {{day .ETA}} · {{.TransitDays}} days{{if .Via}} · via {{.Via}}{{end}}{{if gt .ExtraPerBox 0.0}} · est. +USD {{usd0 .ExtraPerBox}} per box{{end}}</span></span>
+      </label>
+      {{end}}
+    </form>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>2 · Containers · CBM visualizer</h2><span class="muted small">Requests {{n1 $p.RequestedCBM}} CBM · usable {{n1 $p.UsableCBM}} CBM at {{pct (mul $d.Stowage 100)}} stowage</span></div>
+    {{range $p.Boxes}}{{$pb := .}}
+    <div style="margin-bottom:18px">
+      <div class="row between" style="margin-bottom:6px">
+        <b>Container {{.Container.Seq}} · {{.Container.BoxCode}} · grade {{.Container.Grade}}</b>
+        <span class="mono small">{{n1 .Box.UsedCBM}} / {{n1 .Box.Usable}} CBM · {{pct .Box.FillPct}}</span>
+      </div>
+      {{template "box-vis" (dict "Box" .Box "Lots" .Lots "Large" true)}}
+      <div class="box-ends"><span>Nose</span><span>{{pct (mul $d.Stowage 100)}} stowage line · {{n1 .Box.Usable}} of {{n1 .Container.Spec.InternalCBM}} CBM</span><span>Doors</span></div>
+      <div class="row between" style="margin-top:8px">
+        <ul class="checks row" style="gap:2px 16px">{{range .Box.Checks}}<li class="{{if not .OK}}no{{end}}">{{.Label}}</li>{{end}}</ul>
+        {{if not $d.Locked}}
+        <form method="post" action="/ops/containers/{{.Container.ID}}" class="row" data-keep-scroll>{{template "csrf" $.CSRF}}
+          <select name="box" class="input-sm" style="width:auto" data-autosubmit aria-label="Container type">{{range $d.Specs}}<option value="{{.Code}}" {{if eq .Code $pb.Container.BoxCode}}selected{{end}}>{{.Code}}</option>{{end}}</select>
+          <select name="grade" class="input-sm" style="width:auto" data-autosubmit aria-label="Grade">{{range grades}}<option value="{{.}}" {{if eq . $pb.Container.Grade}}selected{{end}}>Grade {{.}}</option>{{end}}</select>
+        </form>
+        {{if gt (len $p.Boxes) 1}}<form method="post" action="/ops/containers/{{.Container.ID}}/remove" data-confirm="Remove Container {{.Container.Seq}}? Its lots will wait to be placed." data-keep-scroll>{{template "csrf" $.CSRF}}<button class="btn sm danger">Remove</button></form>{{end}}
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+
+    {{range $p.Unplaced}}
+    <div class="card warn tight" style="margin-bottom:10px">
+      <div class="row between">
+        <div><b>Overflow: {{.Booking.CompanyName}} · {{n1 .Booking.CBM}} CBM · {{lower (cat .Booking.Category)}}</b><div class="small">{{title .Reason}}{{if .PendingMove}} · <span class="amber">waiting for the shipper to answer a move request</span>{{end}}</div></div>
+        {{if not $d.Locked}}
+        <div class="row">
+          {{if $p.NextSailing}}<form method="post" action="/ops/bookings/{{.Booking.ID}}/move" data-keep-scroll>{{template "csrf" $.CSRF}}<input type="hidden" name="target" value="next_week"><input type="hidden" name="reason" value="Week's container is full"><input type="hidden" name="ask" value="on"><button class="btn sm">Ask to move to {{$p.NextSailing.Label}}</button></form>{{end}}
+          <a class="btn sm" href="?lot={{.Booking.ID}}#move">More options</a>
+        </div>
+        {{end}}
+      </div>
+    </div>
+    {{end}}
+
+    {{if not $d.Locked}}
+    <div class="row" style="margin-top:6px">
+      <form method="post" action="/ops/sailings/{{$s.ID}}/containers" class="row" data-keep-scroll>{{template "csrf" $.CSRF}}
+        <select name="box" class="input-sm" style="width:auto" aria-label="New container type">{{range $d.Specs}}<option value="{{.Code}}">{{.Code}}</option>{{end}}</select>
+        <select name="grade" class="input-sm" style="width:auto" aria-label="New container grade">{{range grades}}<option value="{{.}}" {{if eq (printf "%s" .) "B"}}selected{{end}}>Grade {{.}}</option>{{end}}</select>
+        <button class="btn sm dashed">+ Add container to this sailing</button>
+      </form>
+      {{if $p.Unplaced}}<form method="post" action="/ops/sailings/{{$s.ID}}/autoplace" data-keep-scroll>{{template "csrf" $.CSRF}}<button class="btn sm">Auto-place waiting lots</button></form>{{end}}
+    </div>
+    {{end}}
+  </section>
+
+  {{if and (not $d.Locked) $p.Options}}
+  <section class="card">
+    <div class="card-head"><h2>Container options for these requests</h2><span class="muted small">Filled in booking order · expected bids per lane</span></div>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Box</th><th class="right">Fill</th><th class="right">Lots that fit</th><th class="right">Freight / CBM</th><th></th></tr></thead>
+      <tbody>
+      {{range $p.Options}}{{$code := .Spec.Code}}
+      <tr><td><b>{{.Spec.Code}}</b> {{if .Best}}<span class="pill green">BEST FIT</span>{{end}}</td><td class="right">{{pct .FillPct}}</td><td class="right">{{.LotsFit}}</td><td class="right mono">USD {{n1 .PerCBM}}</td>
+        <td class="right">{{with $p.PrimaryBox}}{{if eq .Container.BoxCode $code}}<span class="pill blue">Selected</span>{{else}}<form method="post" action="/ops/containers/{{.Container.ID}}" class="inline-form" data-keep-scroll>{{template "csrf" $.CSRF}}<input type="hidden" name="box" value="{{$code}}"><button class="btn sm">Use</button></form>{{end}}{{end}}</td></tr>
+      {{end}}
+      </tbody>
+    </table></div>
+  </section>
+  {{end}}
+
+  <section class="card flush">
+    <div class="card-head" style="padding:18px 20px 0"><h2>3 · Shipper requests · {{$s.Label}}</h2><span class="muted small">Placed in booking order. Rules run on every change.</span></div>
+    <div class="table-wrap"><table class="table-card">
+      <thead><tr><th>Shipper</th><th>Category</th><th class="right">CBM</th><th class="right">kg</th><th>Placed in</th><th>Docs</th><th></th></tr></thead>
+      <tbody>
+      {{range $p.All}}{{$l := .}}
+      <tr data-lot="{{.Booking.ID}}">
+        <td><div class="row" style="gap:8px;flex-wrap:nowrap"><span class="swatch lot-{{.Color}}">{{.Label}}</span><span><a href="/ops/bookings/{{.Booking.ID}}">{{.Booking.CompanyName}}</a><div class="faint small mono">{{.Booking.Ref}}</div></span></div></td>
+        <td>{{cat .Booking.Category}}</td>
+        <td class="right mono">{{n1 .Booking.CBM}}</td>
+        <td class="right num">{{thousands .Booking.Kg}}</td>
+        <td>
+          {{if eq .Booking.Mode "coload"}}<span class="pill amber">Co-load</span>
+          {{else if $d.Locked}}{{if .Booking.ContainerID}}Container{{else}}<span class="amber">Unplaced</span>{{end}}
+          {{else}}
+          <form method="post" action="/ops/bookings/{{.Booking.ID}}/place" data-keep-scroll>{{template "csrf" $.CSRF}}
+            <select name="container" class="input-sm" data-autosubmit aria-label="Container for {{.Booking.CompanyName}}">
+              <option value="0" {{if not .Booking.ContainerID}}selected{{end}}>Unplaced</option>
+              {{range $p.Boxes}}<option value="{{.Container.ID}}" {{if eq .Container.ID $l.Booking.ContainerID}}selected{{end}}>Container {{.Container.Seq}}</option>{{end}}
+            </select>
+          </form>
+          {{end}}
+        </td>
+        <td>{{if .MissingDocs}}<span class="pill amber">{{join .MissingDocs ", "}} missing</span>{{else}}<span class="pill green">Complete</span>{{end}}</td>
+        <td class="right">{{if and (not $d.Locked) (eq .Booking.Mode "pool")}}<a class="btn sm ghost" href="?lot={{.Booking.ID}}#move">Move</a>{{end}}</td>
+      </tr>
+      {{else}}
+      <tr><td colspan="7">{{template "empty" (dict "Title" "No requests yet" "Body" "Bookings for this sailing appear here as factories book.")}}</td></tr>
+      {{end}}
+      </tbody>
+    </table></div>
+    {{if $p.Held}}<p class="muted small" style="padding:0 20px 14px">{{len $p.Held}} booking(s) on a 15-minute hold, not counted yet.</p>{{end}}
+  </section>
+</div>
+
+<aside class="stack sticky">
+  {{with $p.PrimaryBox}}{{if gt $p.OwnPerCBM 0.0}}
+  {{$beats := lt $p.OwnPerCBM $p.ColoadRate}}
+  <section class="card {{if $beats}}good{{else}}warn{{end}}">
+    <div class="eyebrow {{if $beats}}green{{else}}amber{{end}}">{{if $beats}}Own box beats co-load{{else}}Co-load is cheaper{{end}}</div>
+    <h2 style="margin:6px 0 10px">{{if $beats}}Own {{.Container.BoxCode}} saves USD {{n1 (sub $p.ColoadRate $p.OwnPerCBM)}} per CBM{{else}}Co-load saves USD {{n1 (sub $p.OwnPerCBM $p.ColoadRate)}} per CBM{{end}}</h2>
+    <div class="kv"><span>Own {{.Container.BoxCode}} freight</span><span>USD {{n1 $p.OwnPerCBM}} / CBM</span></div>
+    <div class="kv"><span>Co-load partner</span><span>USD {{n1 $p.ColoadRate}} / CBM</span></div>
+    <p class="small" style="margin:10px 0 0">Expected bid USD {{usd0 $p.ExpectedBid}} · break-even at {{n1 $p.BreakEvenCBM}} CBM ({{pct $p.BreakEvenPct}} full). Every extra CBM lowers the rate for all shippers.</p>
+  </section>
+  {{end}}{{end}}
+
+  {{if and (not $d.Locked) $d.MoveLot}}{{$m := $d.MoveLot}}
+  <section class="card accent" id="move">
+    <div class="card-band eyebrow">Move request · {{$m.Booking.CompanyName}}</div>
+    <form method="post" action="/ops/bookings/{{$m.Booking.ID}}/move">{{template "csrf" $.CSRF}}
+      <div class="field"><label>Move to</label>
+        {{if $p.NextSailing}}<label class="check" style="margin-bottom:8px"><input type="radio" name="target" value="next_week" checked> <span>{{$p.NextSailing.Label}}{{with $d.NextPlan}}{{with .PrimaryBox}} · Container 1 · {{n1 .Box.UsedCBM}} → {{n1 (addf .Box.UsedCBM $m.Booking.CBM)}} CBM{{end}}{{end}}</span></label>{{end}}
+        <label class="check" style="margin-bottom:8px"><input type="radio" name="target" value="extra_box" {{if not $p.NextSailing}}checked{{end}}> <span>{{$s.Label}} · new extra
+          <select name="box" class="input-sm" style="width:auto;display:inline-block;margin-left:4px" aria-label="Extra container type">{{range $d.Specs}}<option value="{{.Code}}" {{if eq .Code "20GP"}}selected{{end}}>{{.Code}}</option>{{end}}</select></span></label>
+        <label class="check"><input type="radio" name="target" value="coload"> <span>Co-load partner · {{$s.Label}} · USD {{n0 $p.ColoadRate}}/CBM</span></label>
+      </div>
+      <div class="field"><label for="reason">Reason shown to the shipper</label>
+        <select id="reason" name="reason">{{range moveReasons}}<option>{{.}}</option>{{end}}</select></div>
+      <label class="check" style="margin-bottom:12px"><input type="checkbox" name="ask" checked> Notify shipper and ask to accept</label>
+      <p class="muted small">The cost cap shown at booking stays the same. If the shipper declines, the lot goes to a co-load partner on {{$s.Label}}.</p>
+      <button class="btn primary block">Move {{n1 $m.Booking.CBM}} CBM</button>
+    </form>
+  </section>
+  {{end}}
+
+  {{with $p.PrimaryBox}}
+  <section class="card">
+    <div class="eyebrow muted">What a shipper sees</div>
+    <div class="row" style="align-items:baseline;gap:8px;margin-top:6px"><span class="big-sm">{{n1 .Box.FreeCBM}}</span><span class="muted">CBM remaining in {{.Container.BoxCode}}</span></div>
+    <div class="meter slim" style="margin:10px 0 6px"><span style="width:{{pctw .Box.FillPct}}"></span></div>
+    <div class="muted small">{{pct .Box.FillPct}} filled · {{$s.Vessel.Label}} · ETD {{day $s.Vessel.ETD}} · CFS cut-off {{dt $s.CFSCutoff}}</div>
+    <p class="faint small" style="margin:10px 0 0">Shippers never see other factories' names, HS codes, volumes or prices.</p>
+  </section>
+  {{end}}
+
+  <section class="card">
+    <h3 style="margin-bottom:8px">4 · Ready for forwarder bidding?</h3>
+    <ul class="checks">
+      <li class="{{if not $s.Vessel}}no{{end}}">Vessel chosen: {{$s.Vessel.Label}}, {{$s.Vessel.ServiceLabel}}</li>
+      {{range $p.Blockers}}<li class="no">{{.}}</li>{{end}}
+      {{range $p.Warnings}}<li class="bad">{{.}}</li>{{end}}
+      {{if and (not $p.Blockers) (not $p.Warnings)}}<li>Load and weight checks passed</li>{{end}}
+    </ul>
+    {{if not $d.Locked}}
+    <form method="post" action="/ops/sailings/{{$s.ID}}/lock" data-confirm="Lock the plan and open bidding? Shippers can't change their bookings after this.">{{template "csrf" $.CSRF}}
+      <button class="btn primary block" style="margin-top:12px" {{if not $p.CanLock}}disabled{{end}}>{{template "icon-lock"}} Lock plan and open bidding</button>
+    </form>
+    <p class="lock-note">Unlocks when every lot is placed. Forwarders bid on the chosen vessel.</p>
+    {{end}}
+  </section>
+
+  <section class="card">
+    <h3 style="margin-bottom:8px">Loading rules</h3>
+    <ul class="small muted" style="margin:0;padding-left:18px">
+      <li>Usable space is {{pct (mul $d.Stowage 100)}} of the box (stowage factor).</li>
+      <li>Weight stays under the box's payload.</li>
+      <li>Fabric needs a clean grade A or B box.</li>
+      <li>Dyes and chemicals never share a box with fabric, and grade A stays clean.</li>
+      <li>Dangerous goods aren't pooled in phase 1.</li>
+    </ul>
+  </section>
+</aside>
+</div>
+{{end}}

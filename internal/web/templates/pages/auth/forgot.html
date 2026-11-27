@@ -1,0 +1,9 @@
+{{define "content"}}
+<h1 style="margin:0 0 6px;font-size:26px">Reset your password</h1>
+<p class="muted" style="margin-bottom:20px">Enter your work email and we'll send you a link.</p>
+<form method="post" action="/forgot">
+  <div class="field"><label for="email">Work email</label><input id="email" type="email" name="email" required autofocus></div>
+  <button class="btn primary block lg" type="submit">Send reset link</button>
+</form>
+<p class="muted small" style="margin-top:18px"><a href="/login">Back to sign in</a></p>
+{{end}}

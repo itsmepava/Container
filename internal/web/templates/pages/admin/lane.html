@@ -1,0 +1,26 @@
+{{define "mainclass"}}narrow{{end}}
+{{define "content"}}
+{{$l := .D.L}}
+<div class="page-head"><div><a href="/admin/lanes" class="small">‹ Lanes and sailings</a><h1 style="margin-top:4px">{{.Title}}</h1></div></div>
+<form method="post" action="/admin/lanes" class="card">{{template "csrf" .CSRF}}
+  <input type="hidden" name="id" value="{{$l.ID}}">
+  <div class="form-row">
+    <div class="field"><label for="origin">Origin port</label><select id="origin" name="origin">{{range .D.Ports}}<option value="{{.Code}}" {{if eq .Code $l.Origin.Code}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+    <div class="field"><label for="dest">Destination port</label><select id="dest" name="dest">{{range .D.Ports}}<option value="{{.Code}}" {{if eq .Code $l.Dest.Code}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+  </div>
+  <div class="form-row">
+    <div class="field"><label for="coload_rate">Co-load partner rate (USD per W/M)</label><input id="coload_rate" name="coload_rate" inputmode="decimal" value="{{n2 $l.ColoadRate}}"></div>
+    <div class="field"><label for="estimate">Booking estimate cap (USD per W/M)</label><input id="estimate" name="estimate" inputmode="decimal" value="{{n2 $l.EstimatePerWM}}"><div class="help">Shippers' final cost never goes above this.</div></div>
+  </div>
+  <div class="field"><label for="origin_cfs">Origin CFS</label><input id="origin_cfs" name="origin_cfs" value="{{$l.OriginCFS}}" placeholder="Where suppliers deliver cargo"></div>
+  <div class="form-row">
+    <div class="field"><label for="default_box">Default container</label><select id="default_box" name="default_box">{{range .D.Specs}}<option value="{{.Code}}" {{if eq .Code $l.DefaultBox}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+    <div class="field"><label for="default_grade">Default grade</label><select id="default_grade" name="default_grade">{{range grades}}<option value="{{.}}" {{if eq . $l.DefaultGrade}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+  </div>
+  <h3 style="margin:8px 0 10px">Expected all-in bid per container (USD)</h3>
+  <p class="muted small">Used for pool decisions and container options before real bids arrive.</p>
+  <div class="form-row">{{range .D.Specs}}<div class="field"><label for="rate_{{.Code}}">{{.Code}}</label><input id="rate_{{.Code}}" name="rate_{{.Code}}" inputmode="decimal" value="{{with index $l.Rates .Code}}{{n0 .}}{{end}}"></div>{{end}}</div>
+  <label class="check" style="margin-bottom:16px"><input type="checkbox" name="active" {{if $l.Active}}checked{{end}}> Lane is active (factories can book it)</label>
+  <button class="btn primary">Save lane</button>
+</form>
+{{end}}

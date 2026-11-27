@@ -1,0 +1,137 @@
+{{define "content"}}
+{{$d := .D}}{{$v := $d.V}}{{$t := $v.Tender}}
+<div class="page-head">
+  <div>
+    <div class="row"><h1 class="mono">{{$t.Ref}}</h1>{{template "status-pill" $t.StatusLabel}}{{if eq $t.AwardKind "override"}}<span class="pill amber">Override</span>{{end}}</div>
+    <div class="sub">1 × {{$t.Container.BoxCode}} · {{$t.Sailing.Lane.Short}} · {{$t.Sailing.Label}} · requested {{$t.Vessel.Label}}, {{$t.Vessel.ServiceLabel}} · {{n1 $t.CBM}} CBM · {{tonnes $t.Kg}} t · {{$t.Lots}} lots</div>
+  </div>
+  <a class="btn" href="/ops/sailings/{{$t.Sailing.ID}}/plan">‹ Load planner</a>
+</div>
+
+<div class="grid cols-main">
+<div class="stack">
+  <section class="card flush">
+    <div class="card-head" style="padding:18px 20px 0">
+      <div><div class="eyebrow {{if eq $t.Status "open"}}{{else}}muted{{end}}">{{if eq $t.Status "open"}}Bids close {{dt $t.ClosesAt}} · <span data-countdown="{{iso $t.ClosesAt}}"></span> left{{else}}Bids closed {{dt $t.ClosesAt}}{{end}}</div>
+        <h2 style="margin-top:4px">{{len $v.Bids}} sealed bid{{if ne (len $v.Bids) 1}}s{{end}} · all-in USD per container</h2>
+        <div class="muted small">Ocean freight, origin and destination charges, CFS stuffing and de-stuffing. Auto pick: lowest compliant bid on the requested vessel.</div></div>
+    </div>
+    {{if $v.Bids}}
+    <div class="table-wrap"><table class="table-card" style="margin-top:10px">
+      <thead><tr><th></th><th>Forwarder</th><th class="right">Bid USD</th><th>Vessel</th><th class="right">Transit</th><th>Status</th></tr></thead>
+      <tbody>
+      {{range $v.Bids}}
+      <tr class="hover {{if and $v.Selected (eq .Bid.ID $v.Selected.Bid.ID)}}selected{{end}}" data-href="?bid={{.Bid.ID}}">
+        <td><a href="?bid={{.Bid.ID}}" aria-label="Preview award to {{.Bid.CompanyName}}"><input type="radio" tabindex="-1" style="pointer-events:none;accent-color:var(--primary)" {{if and $v.Selected (eq .Bid.ID $v.Selected.Bid.ID)}}checked{{end}}></a></td>
+        <td><b>{{.Bid.CompanyName}}</b>{{if .Bid.Note}}<div class="muted small">“{{.Bid.Note}}”</div>{{end}}</td>
+        <td class="right mono"><b>{{moneyShort .Bid.AmountCents}}</b></td>
+        <td>{{with .Vessel}}{{.Label}} <span class="muted small">{{.ServiceLabel}}</span>{{end}}</td>
+        <td class="right">{{with .Vessel}}{{.TransitDays}} days{{end}}</td>
+        <td>{{if .Awarded}}<span class="pill green">Awarded</span>{{else if .AutoPick}}<span class="pill blue">Lowest compliant · auto pick</span>{{else if .Compliant}}<span class="pill">Compliant</span>{{else}}<span class="pill red" title="{{.Reason}}">Not compliant</span><div class="faint small">{{.Reason}}</div>{{end}}</td>
+      </tr>
+      {{end}}
+      </tbody>
+    </table></div>
+    {{else}}
+    {{template "empty" (dict "Title" "No bids yet" "Body" "Invited forwarders get a push notification. Invite more or extend the deadline if needed.")}}
+    {{end}}
+    {{if $v.CheaperNote}}<div class="alert info" style="margin:0 20px 18px">{{$v.CheaperNote}}</div>{{end}}
+  </section>
+
+  {{if $v.Selected}}
+  <section class="card flush">
+    <div class="card-head" style="padding:18px 20px 0"><h2>Per shipper, if awarded to {{$v.Selected.Bid.CompanyName}}</h2><span class="muted small">Split by W/M · fee USD {{n2 $v.FeePerWM}} per W/M</span></div>
+    <div class="table-wrap"><table class="table-card">
+      <thead><tr><th>Shipper</th><th class="right">W/M</th><th class="right">Freight</th><th class="right">Fee</th><th class="right">Total</th><th class="right">Cap</th><th class="right">All-in / W/M</th><th>Docs</th></tr></thead>
+      <tbody>
+      {{range $v.Bills}}
+      <tr><td><a href="/ops/bookings/{{.BookingID}}">{{.CompanyName}}</a><div class="faint small mono">{{.Ref}}</div></td><td class="right mono">{{n2 .WM}}</td><td class="right mono">{{money .FreightCents}}</td><td class="right mono">{{money .FeeCents}}</td>
+        <td class="right mono"><b>{{money .TotalCents}}</b></td><td class="right mono {{if .CapApplied}}red{{end}}">{{money .CapCents}}</td><td class="right mono">{{n2 .AllInPerWM}}</td>
+        <td>{{with index $d.Missing .BookingID}}<span class="pill amber">{{join . ", "}}</span>{{else}}<span class="pill green">OK</span>{{end}}</td></tr>
+      {{end}}
+      </tbody>
+    </table></div>
+  </section>
+  {{end}}
+
+  <section class="card">
+    <h3 style="margin-bottom:8px">Audit log</h3>
+    {{if $v.Audit}}<ul class="feed">{{range $v.Audit}}<li><time>{{hm .At}}</time><span>{{.Summary}} <span class="faint">· {{.ActorName}}</span></span></li>{{end}}</ul>{{else}}<p class="muted">Nothing yet.</p>{{end}}
+  </section>
+</div>
+
+<aside class="stack sticky">
+  {{if eq $t.Status "awarded"}}
+  <section class="card good">
+    <div class="eyebrow green">Awarded{{with $t.AwardedAt}} {{dtp .}}{{end}}</div>
+    <h2 style="margin:6px 0">{{$v.Selected.Bid.CompanyName}} · USD {{moneyShort $v.Selected.Bid.AmountCents}}</h2>
+    <div class="kv"><span>Freight per W/M</span><span>USD {{n2 $v.Summary.FreightPerWM}}</span></div>
+    <div class="kv"><span>Eimsky fees</span><span>USD {{moneyShort $v.Summary.FeeCents}}</span></div>
+    <div class="kv"><span>Invoiced to factories</span><span>USD {{money $v.Summary.InvoicedCents}}</span></div>
+    {{if $t.AwardReason}}<p class="small" style="margin:10px 0 0">Override reason: “{{$t.AwardReason}}”</p>{{end}}
+  </section>
+  <section class="card">
+    <h3 style="margin-bottom:6px">Forwarder documents</h3>
+    {{range $d.Docs}}<div class="doc"><span class="ic ok">{{template "icon-check"}}</span><div class="body"><div class="name">{{docLabel .Kind}}</div><div class="sub"><a href="/docs/{{.ID}}" target="_blank" rel="noopener">{{.Filename}}</a></div></div></div>
+    {{else}}<p class="muted small">Waiting for the forwarder's booking confirmation. Invoices go out once it's in and shippers' documents are complete.</p>{{end}}
+    <form method="post" action="/ops/tenders/{{$t.ID}}/docs" enctype="multipart/form-data" class="upload btn sm" style="margin-top:8px">{{template "csrf" $.CSRF}}<input type="hidden" name="kind" value="booking_confirmation">{{template "icon-upload"}} Upload on forwarder's behalf<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" data-autosubmit></form>
+  </section>
+  {{else if $v.Selected}}
+  {{$s := $v.Selected}}{{$isAuto := and $v.AutoPick (eq $s.Bid.ID $v.AutoPick.Bid.ID)}}
+  <section class="card {{if $isAuto}}accent{{else}}warn{{end}}">
+    {{if $isAuto}}
+      <div class="card-band eyebrow">Billing preview if awarded to {{$s.Bid.CompanyName}}</div>
+    {{else}}
+      <div class="eyebrow amber">Override · award to {{$s.Bid.CompanyName}}</div>
+    {{end}}
+    {{if not $isAuto}}<div class="kv"><span>Extra vs auto pick</span><span>{{if ge $v.ExtraCents 0}}+{{end}} USD {{moneyShort $v.ExtraCents}}</span></div>{{end}}
+    <div class="kv"><span>Winning bid</span><span>USD {{moneyShort $s.Bid.AmountCents}}</span></div>
+    <div class="kv"><span>Shared across</span><span>{{$v.Summary.Shippers}} shippers · {{n1 $v.Summary.TotalWM}} W/M</span></div>
+    <div class="kv"><span>Freight per W/M</span><span>USD {{n2 $v.Summary.FreightPerWM}}</span></div>
+    <div class="kv"><span>Eimsky fees</span><span>USD {{moneyShort $v.Summary.FeeCents}}</span></div>
+    <div class="kv"><span>Invoiced to factories</span><span>USD {{money $v.Summary.InvoicedCents}}</span></div>
+    {{if $v.OverCap}}
+      <div class="alert bad" style="margin-top:12px">At least one shipper would go above its cost cap (all-in up to USD {{n2 $v.Summary.MaxAllInPerWM}} per W/M). {{if $isAuto}}Their invoices will be held at their caps.{{else}}Overrides that push any shipper above its cap are blocked.{{end}}</div>
+    {{else}}
+      <div class="alert good" style="margin-top:12px">Every shipper stays under its estimate. All-in USD {{n2 $v.Summary.AllInPerWM}} per W/M including the fee.</div>
+    {{end}}
+    {{if eq $t.Status "open"}}
+      <p class="muted small" style="margin:12px 0 0">You can award once bids close {{dt $t.ClosesAt}}.</p>
+    {{else}}
+    <form method="post" action="/ops/tenders/{{$t.ID}}/award" style="margin-top:14px" data-confirm="Award {{$t.Ref}} to {{$s.Bid.CompanyName}} at USD {{moneyShort $s.Bid.AmountCents}}?">{{template "csrf" $.CSRF}}
+      <input type="hidden" name="bid" value="{{$s.Bid.ID}}">
+      {{if not $isAuto}}
+      <div class="field"><label for="reason">Reason (required, kept in the audit log)</label><textarea id="reason" name="reason" required placeholder="e.g. Better on-time record for fabric on this lane"></textarea></div>
+      <button class="btn primary block" {{if $v.OverCap}}disabled{{end}}>Confirm override and award</button>
+      {{else}}
+      <button class="btn primary block lg">Award to {{$s.Bid.CompanyName}}</button>
+      {{end}}
+    </form>
+    <p class="lock-note">Choosing another bidder needs a written reason, kept with the tender. Losing bidders are told the result, not the winning price.</p>
+    {{end}}
+  </section>
+  {{end}}
+
+  {{if ne $t.Status "awarded"}}
+  <section class="card">
+    <h3 style="margin-bottom:10px">{{if eq $t.Status "open"}}Extend deadline{{else}}Reopen tender{{end}}</h3>
+    <form method="post" action="/ops/tenders/{{$t.ID}}/extend" class="row" style="align-items:flex-end">{{template "csrf" $.CSRF}}
+      <div class="field" style="margin:0;flex:1"><label for="closes">Bids close</label><input id="closes" type="datetime-local" name="closes" value="{{local $t.ClosesAt}}" required></div>
+      <button class="btn">{{if eq $t.Status "open"}}Extend{{else}}Reopen{{end}}</button>
+    </form>
+    <p class="muted small" style="margin:8px 0 0">Must be before the CFS cut-off, {{dt $t.Sailing.CFSCutoff}}.</p>
+  </section>
+  <section class="card">
+    <h3 style="margin-bottom:6px">Invited forwarders · {{len $v.Invited}}</h3>
+    <p class="muted small">{{join $v.Invited ", "}}</p>
+    {{if and $d.Forwarders (eq $t.Status "open")}}
+    <form method="post" action="/ops/tenders/{{$t.ID}}/invite">{{template "csrf" $.CSRF}}
+      {{range $d.Forwarders}}<label class="check" style="margin:6px 0"><input type="checkbox" name="company" value="{{.ID}}"> {{.Name}}</label>{{end}}
+      <button class="btn sm" style="margin-top:6px">Invite selected</button>
+    </form>
+    {{end}}
+  </section>
+  {{end}}
+</aside>
+</div>
+{{end}}

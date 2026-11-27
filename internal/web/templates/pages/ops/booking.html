@@ -1,0 +1,61 @@
+{{define "content"}}
+{{$b := .D.B}}
+<div class="page-head">
+  <div><div class="row"><h1 class="mono">{{$b.Ref}}</h1>{{template "status-pill" $b.StatusLabel}}{{if eq $b.Mode "coload"}}<span class="pill amber">Co-load</span>{{end}}</div>
+    <div class="sub">{{$b.CompanyName}} · {{$b.Sailing.Lane.Short}} · {{$b.Sailing.Label}} · {{$b.BoxCode}} · {{cat $b.Category}}</div></div>
+  <div class="row">
+    <a class="btn" href="/ops/sailings/{{$b.SailingID}}/plan?lot={{$b.ID}}">Open in load planner</a>
+    {{with .D.TenderID}}{{if .}}<a class="btn" href="/ops/tenders/{{.}}">Tender</a>{{end}}{{end}}
+  </div>
+</div>
+{{with .D.Move}}<div class="alert warn" style="margin-bottom:18px">Waiting for the shipper to answer: move to {{.TargetLabel}} · “{{.Reason}}” · asked {{ago .CreatedAt}}.</div>{{end}}
+{{if eq $b.Status "booked"}}<div class="card" style="margin-bottom:18px">{{template "tracker" .D.Steps}}</div>{{end}}
+<div class="grid cols-2" style="align-items:start">
+  <div class="stack">
+    <section class="card">
+      <h3 style="margin-bottom:8px">Shipment</h3>
+      <div class="kv"><span>Volume · weight</span><span>{{n2 $b.CBM}} CBM · {{thousands $b.Kg}} kg · {{n2 $b.WM}} W/M</span></div>
+      <div class="kv"><span>Cost cap</span><span>USD {{money $b.CapCents}}</span></div>
+      {{if $b.Priced}}
+      <div class="kv"><span>Freight</span><span>USD {{moneyP $b.FreightCents}}</span></div>
+      <div class="kv"><span>Fee</span><span>USD {{moneyP $b.FeeCents}}</span></div>
+      <div class="kv"><span>Total{{if $b.CapApplied}} (held at cap){{end}}</span><span>USD {{moneyP $b.TotalCents}}</span></div>
+      {{end}}
+      {{with .D.Invoice}}<div class="kv"><span>Invoice</span><span><a href="/ops/invoices/{{.ID}}.pdf" target="_blank" rel="noopener">{{.Number}}</a> · {{.Status}}</span></div>{{end}}
+      <div class="kv"><span>Booked</span><span>{{dtp $b.ConfirmedAt}}</span></div>
+    </section>
+    <section class="card">
+      <h3 style="margin-bottom:8px">Factory contacts</h3>
+      {{range .D.Contacts}}<div class="kv"><span>{{.Name}} · {{.Role.Label}}</span><span>{{.Email}}{{if .Phone}} · {{.Phone}}{{end}}</span></div>{{end}}
+    </section>
+    <section class="card">
+      <h3 style="margin-bottom:6px">Cargo</h3>
+      <div class="table-wrap"><table><thead><tr><th>HS code</th><th class="right">Pieces</th><th class="right">cm</th><th class="right">kg</th><th class="right">CBM</th></tr></thead><tbody>
+      {{range $b.Lines}}<tr><td class="mono">{{.HSCode}}<div class="faint small" style="font-family:var(--sans)">{{.Description}}</div></td><td class="right">{{.Pieces}}</td><td class="right">{{n0 .LengthCm}}×{{n0 .WidthCm}}×{{n0 .HeightCm}}</td><td class="right">{{thousands .Kg}}</td><td class="right mono">{{n2 .CBM}}</td></tr>{{end}}
+      </tbody></table></div>
+    </section>
+    {{if and (or (eq $b.Status "booked") (eq $b.Status "held")) (eq $b.Sailing.Status "open") (not $b.Priced)}}
+    <form method="post" action="/ops/bookings/{{$b.ID}}/cancel" data-confirm="Cancel {{$b.Ref}} for {{$b.CompanyName}}? They'll see it as cancelled.">{{template "csrf" $.CSRF}}<input type="hidden" name="reason" value="Cancelled by Eimsky ops"><button class="btn danger">Cancel booking</button></form>
+    {{end}}
+  </div>
+  <div class="stack">
+    <section class="card">
+      <h3 style="margin-bottom:4px">Documents</h3>
+      {{range .D.Docs}}
+      <div class="doc">
+        <span class="ic {{if .Doc}}ok{{end}}">{{if .Doc}}{{template "icon-check"}}{{else}}{{template "icon-file"}}{{end}}</span>
+        <div class="body"><div class="name">{{.Label}}{{if .Required}} <span class="faint small">required</span>{{end}}</div>
+          <div class="sub">{{if .Doc}}{{if .Doc.PurgedAt}}Deleted after handover{{else}}<a href="/docs/{{.Doc.ID}}" target="_blank" rel="noopener">{{.Doc.Filename}}</a> · {{.Doc.SizeLabel}}{{end}}{{else}}Not uploaded{{end}}</div></div>
+        {{if and (not .ByOther) (or (eq $b.Status "booked") (eq $b.Status "held"))}}
+        <form method="post" action="/ops/bookings/{{$b.ID}}/docs" enctype="multipart/form-data" class="upload btn sm" data-keep-scroll>{{template "csrf" $.CSRF}}<input type="hidden" name="kind" value="{{.Kind}}">{{if .Doc}}Replace{{else}}Upload{{end}}<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" data-autosubmit></form>
+        {{end}}
+      </div>
+      {{end}}
+    </section>
+    <section class="card">
+      <h3 style="margin-bottom:8px">History</h3>
+      {{if .D.Audit}}<ul class="feed">{{range .D.Audit}}<li><time>{{hm .At}}</time><span>{{.Summary}} <span class="faint">· {{.ActorName}}</span></span></li>{{end}}</ul>{{else}}<p class="muted">No changes recorded.</p>{{end}}
+    </section>
+  </div>
+</div>
+{{end}}

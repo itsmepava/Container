@@ -43,6 +43,23 @@ func (c Category) Label() string {
 	return string(c)
 }
 
+// Short is a lower-case name for lists: "fabric, trims, packaging".
+func (c Category) Short() string {
+	switch c {
+	case CatFabric:
+		return "fabric"
+	case CatTrims:
+		return "trims"
+	case CatPackaging:
+		return "packaging"
+	case CatDyes:
+		return "dyes"
+	case CatDG:
+		return "DG"
+	}
+	return string(c)
+}
+
 func (c Category) Valid() bool {
 	for _, x := range Categories {
 		if x == c {

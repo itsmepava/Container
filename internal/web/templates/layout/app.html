@@ -1,0 +1,64 @@
+{{define "app"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.Title}} · Eimsky</title>
+<meta name="csrf-token" content="{{.CSRF}}">
+<link rel="icon" href="/favicon.ico" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/app.css">
+<script src="/static/vendor/htmx.min.js" defer></script>
+<script src="/static/js/app.js" defer></script>
+</head>
+<body>
+<header class="topbar{{if eq .Area "ops"}} dark{{end}}">
+  <div class="topbar-in">
+    <a href="/" class="brand" style="text-decoration:none;color:inherit">
+      <span class="eyebrow">{{.Eyebrow}}</span>
+      <span class="title">{{block "heading" .}}{{.Title}}{{end}}</span>
+    </a>
+    {{template "nav" .}}
+    <div class="tools">
+      <a class="bell" href="/notifications" title="Notifications" aria-label="Notifications">
+        {{template "icon-bell"}}
+        <span hx-get="/notifications/count" hx-trigger="every 30s" hx-swap="outerHTML">{{template "unread" .Unread}}</span>
+      </a>
+      <a class="who" href="/account" title="Your account">
+        <span class="avatar">{{.User.Initials}}</span>
+        <span class="co">{{if .User.IsStaff}}{{.User.Name}}{{else}}{{.User.CompanyName}}{{end}}</span>
+      </a>
+    </div>
+  </div>
+</header>
+{{template "flash" .}}
+{{block "subbar" .}}{{end}}
+<main class="{{block "mainclass" .}}{{end}}">
+{{template "content" .}}
+</main>
+</body>
+</html>{{end}}
+
+{{define "unread"}}{{if gt . 0}}<span class="badge-count">{{if gt . 99}}99+{{else}}{{.}}{{end}}</span>{{else}}<span></span>{{end}}{{end}}
+
+{{define "nav"}}
+<nav class="nav" aria-label="Main">
+{{if eq .Area "factory"}}
+  <a href="/f/book" class="{{if has .Path "/f/book"}}{{if not (has .Path "/f/bookings")}}on{{end}}{{end}}">New booking</a>
+  <a href="/f/bookings" class="{{if has .Path "/f/bookings"}}on{{end}}">My bookings</a>
+  <a href="/f/invoices" class="{{if has .Path "/f/invoices"}}on{{end}}">Invoices</a>
+  {{if eq (printf "%s" .User.Role) "factory_admin"}}<a href="/f/team" class="{{if has .Path "/f/team"}}on{{end}}">Team</a>{{end}}
+{{else if eq .Area "ops"}}
+  <a href="/ops/pools" class="{{if has .Path "/ops/pools"}}on{{end}}">Pools</a>
+  <a href="/ops/plan" class="{{if has .Path "/plan"}}on{{end}}">Load planner</a>
+  <a href="/ops/tenders" class="{{if has .Path "/ops/tenders"}}on{{end}}">Bids</a>
+  <a href="/ops/bookings" class="{{if has .Path "/ops/bookings"}}on{{end}}">Bookings</a>
+  <a href="/ops/invoices" class="{{if has .Path "/ops/invoices"}}on{{end}}">Invoices</a>
+  <a href="/insights" class="{{if has .Path "/insights"}}on{{end}}">Insights</a>
+  <a href="/admin/lanes" class="{{if has .Path "/admin"}}on{{end}}">Admin{{if gt .Pending 0}} <span class="pill amber" style="padding:0 6px;line-height:1.5">{{.Pending}}</span>{{end}}</a>
+{{else if eq .Area "viewer"}}
+  <a href="/insights" class="on">Insights</a>
+{{end}}
+</nav>
+{{end}}
+
+{{define "flash"}}{{if .Flash}}<div class="flash"><div class="alert {{.Flash.Kind}}" role="status">{{.Flash.Msg}}</div></div>{{end}}{{end}}

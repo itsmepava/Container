@@ -402,8 +402,11 @@ func (a *App) SeedDemo(ctx context.Context) error {
 		}
 		nextBookings = append(nextBookings, booking(shaN, i, lotsW[i], cont, now.Add(-time.Duration(48-i*4)*time.Hour), w2))
 	}
-	for i, b := range nextBookings[:6] {
+	for i, b := range nextBookings[:8] {
 		upload("booking", b, "commercial_invoice", fmt.Sprintf("INV-SH-%04d.pdf", 3100+i))
+		if lotsW[i].cat == domain.CatFabric && i != 3 {
+			upload("booking", b, "import_licence", fmt.Sprintf("LIC-%04d.pdf", 3200+i))
+		}
 	}
 	_ = a.Audit(ctx, q, nil, "move.accepted", "booking", nextBookings[9], "Lotus Textiles accepted the move of its 8.2 CBM from Week "+fmt.Sprint(w1)+" to Week "+fmt.Sprint(w2), nil)
 
@@ -425,7 +428,7 @@ func (a *App) SeedDemo(ctx context.Context) error {
 	// Seeded history shouldn't fire emails and pushes.
 	_, _ = q.Exec(ctx, `UPDATE email_outbox SET sent_at=now()`)
 	_, _ = q.Exec(ctx, `UPDATE push_outbox SET sent_at=now()`)
-	_, _ = q.Exec(ctx, `UPDATE notifications SET read_at=now() WHERE created_at < now() - interval '1 second'`)
+	_, _ = q.Exec(ctx, `UPDATE notifications SET read_at=now() WHERE title NOT LIKE 'Bids closed on%' AND title NOT LIKE 'New forwarder to approve%'`)
 	return nil
 }
 

@@ -1,0 +1,20 @@
+{{define "content"}}
+<div class="eyebrow">Factories</div>
+<h1 style="margin:6px 0 6px;font-size:26px">Register your factory</h1>
+<p class="muted" style="margin-bottom:20px">Eimsky checks new factories within one working day. Then you can book space.</p>
+<form method="post" action="/signup" novalidate>
+  <div class="field"><label for="company">Factory or company name</label><input id="company" name="company" value="{{.D.CompanyName}}" required autofocus></div>
+  <div class="form-row">
+    <div class="field"><label for="reg">Business registration no. <span class="faint">(optional)</span></label><input id="reg" name="reg" value="{{.D.RegNumber}}"></div>
+    <div class="field"><label for="phone">Mobile <span class="faint">(optional)</span></label><input id="phone" type="tel" name="phone" value="{{.D.Phone}}" placeholder="+94 77 123 4567"></div>
+  </div>
+  <div class="field"><label for="address">Address <span class="faint">(optional)</span></label><input id="address" name="address" value="{{.D.Address}}"></div>
+  <div class="divider"></div>
+  <div class="field"><label for="name">Your name</label><input id="name" name="name" value="{{.D.Name}}" autocomplete="name" required></div>
+  <div class="field"><label for="email">Work email</label><input id="email" type="email" name="email" value="{{.D.Email}}" autocomplete="email" required></div>
+  <div class="field"><label for="password">Password</label><input id="password" type="password" name="password" autocomplete="new-password" minlength="8" required><div class="help">At least 8 characters.</div></div>
+  <button class="btn primary block lg" type="submit">Create account</button>
+</form>
+<p class="muted small" style="margin-top:18px">Already registered? <a href="/login">Sign in</a></p>
+<p class="faint small">🔒 We keep only what moves cargo: size, weight, HS code and category. No prices, buyers, orders or styles.</p>
+{{end}}

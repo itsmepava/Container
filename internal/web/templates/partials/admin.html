@@ -1,0 +1,10 @@
+{{define "admin-tabs"}}
+<div class="tabs">
+  <a href="/admin/lanes" class="{{if or (has .Path "/admin/lanes") (has .Path "/admin/sailings")}}on{{end}}">Lanes and sailings</a>
+  <a href="/admin/companies" class="{{if has .Path "/admin/companies"}}on{{end}}">Companies{{if gt .Pending 0}} <span class="pill amber" style="padding:0 6px;line-height:1.5">{{.Pending}}</span>{{end}}</a>
+  <a href="/admin/users" class="{{if has .Path "/admin/users"}}on{{end}}">Users</a>
+  <a href="/admin/settings" class="{{if has .Path "/admin/settings"}}on{{end}}">Settings</a>
+  <a href="/admin/audit" class="{{if has .Path "/admin/audit"}}on{{end}}">Audit log</a>
+  {{if .Dev}}<a href="/dev/mail" class="{{if has .Path "/dev/mail"}}on{{end}}">Email outbox <span class="faint small">(dev)</span></a>{{end}}
+</div>
+{{end}}

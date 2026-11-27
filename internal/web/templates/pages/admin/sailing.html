@@ -1,0 +1,50 @@
+{{define "mainclass"}}narrow{{end}}
+{{define "content"}}
+{{$s := .D.S}}
+<div class="page-head">
+  <div><a href="/admin/lanes" class="small">‹ Lanes and sailings</a><div class="row" style="margin-top:4px"><h1>{{$s.Lane.Short}} · {{$s.Label}}</h1>{{template "status-pill" $s.StatusLabel}}</div></div>
+  <div class="row"><a class="btn" href="/ops/sailings/{{$s.ID}}/plan">Load planner</a>
+    <form method="post" action="/admin/sailings/{{$s.ID}}/copy">{{template "csrf" .CSRF}}<button class="btn">Copy to next week</button></form></div>
+</div>
+<div class="stack">
+<section class="card">
+  <h3 style="margin-bottom:10px">Deadlines</h3>
+  <form method="post" action="/admin/sailings/{{$s.ID}}/times">{{template "csrf" .CSRF}}
+    <div class="form-row">
+      <div class="field"><label for="lock">Plan locks</label><input id="lock" type="datetime-local" name="lock" value="{{local $s.PlanLockAt}}"></div>
+      <div class="field"><label for="close">Bids close</label><input id="close" type="datetime-local" name="close" value="{{local $s.BidCloseAt}}"></div>
+      <div class="field"><label for="cutoff">CFS cut-off</label><input id="cutoff" type="datetime-local" name="cutoff" value="{{local $s.CFSCutoff}}"></div>
+    </div>
+    <button class="btn">Save deadlines</button>
+  </form>
+</section>
+<section class="card">
+  <h3 style="margin-bottom:10px">Vessel options</h3>
+  <div class="table-wrap"><table><thead><tr><th>Vessel</th><th>Service</th><th>ETD</th><th>ETA</th><th class="right">Transit</th><th class="right">Extra/box</th><th></th></tr></thead><tbody>
+  {{range $s.Vessels}}<tr><td><b>{{.Label}}</b>{{if .IsDefault}} <span class="pill">default</span>{{end}}</td><td>{{.ServiceLabel}}{{if .Via}} · via {{.Via}}{{end}}</td><td>{{dt .ETD}}</td><td>{{dt .ETA}}</td><td class="right">{{.TransitDays}} d</td><td class="right">{{if gt .ExtraPerBox 0.0}}USD {{usd0 .ExtraPerBox}}{{else}}–{{end}}</td><td>{{if eq .ID $s.Vessel.ID}}<span class="pill blue">Chosen</span>{{end}}</td></tr>{{end}}
+  </tbody></table></div>
+  {{if eq $s.Status "open"}}
+  <details style="margin-top:12px"><summary class="linkbtn">+ Add a vessel option</summary>
+  <form method="post" action="/admin/sailings/{{$s.ID}}/vessels" style="margin-top:12px">{{template "csrf" .CSRF}}
+    <div class="form-row">
+      <div class="field"><label>Name</label><input name="name" required></div><div class="field"><label>Voyage</label><input name="voyage"></div>
+      <div class="field"><label>Service</label><select name="service"><option value="standard">Standard</option><option value="fast">Fast</option></select></div>
+    </div>
+    <div class="form-row">
+      <div class="field"><label>ETD</label><input type="datetime-local" name="etd" required></div><div class="field"><label>ETA</label><input type="datetime-local" name="eta" required></div>
+      <div class="field"><label>Via</label><input name="via"></div><div class="field"><label>Extra per box</label><input name="extra" inputmode="decimal"></div>
+    </div>
+    <button class="btn">Add vessel</button>
+  </form></details>
+  {{end}}
+</section>
+<section class="card">
+  <h3 style="margin-bottom:10px">Containers</h3>
+  {{range .D.Containers}}<div class="kv"><span>{{.Label}}</span><span>{{.Status}}</span></div>{{else}}<p class="muted">None.</p>{{end}}
+</section>
+<section class="card">
+  <h3 style="margin-bottom:8px">History</h3>
+  {{if .D.Audit}}<ul class="feed">{{range .D.Audit}}<li><time>{{hm .At}}</time><span>{{.Summary}} <span class="faint">· {{.ActorName}}</span></span></li>{{end}}</ul>{{else}}<p class="muted">Nothing yet.</p>{{end}}
+</section>
+</div>
+{{end}}

@@ -1,0 +1,157 @@
+{{define "heading"}}{{.D.B.Ref}} · {{.D.B.Sailing.Lane.Short}} · {{.D.B.Sailing.Label}}{{end}}
+{{define "content"}}
+{{$d := .D}}{{$b := $d.B}}
+<div class="page-head">
+  <div>
+    <div class="row"><h1 class="mono">{{$b.Ref}}</h1>{{template "status-pill" $b.StatusLabel}}{{if eq $b.Mode "coload"}}<span class="pill amber">Co-load partner</span>{{end}}</div>
+    <div class="sub">{{$b.Sailing.Lane.Short}} · {{$b.Sailing.Label}} · {{$b.BoxCode}} · {{cat $b.Category}}</div>
+  </div>
+  <div class="row">
+    <a class="btn" href="/f/book?rebook={{$b.ID}}" title="Start a new booking with the same cargo">Book again</a>
+    {{if $d.CanCancel}}<button class="btn danger" data-open="cancel-dlg">Cancel booking</button>{{end}}
+  </div>
+</div>
+
+{{if $d.HoldActive}}
+<div class="card accent" style="margin-bottom:18px">
+  <div class="card-band eyebrow">Space held · confirm to book</div>
+  <div class="row between">
+    <div>
+      <div class="row" style="align-items:baseline"><span class="big-sm">{{n2 $b.CBM}} CBM</span><span class="muted">held in the {{$b.BoxCode}} for {{$b.Sailing.Label}}</span></div>
+      <div class="muted" style="margin-top:4px">Estimated cost up to <b>USD {{moneyShort $b.CapCents}}</b>. The final cost comes from forwarder bidding and never goes above this.</div>
+    </div>
+    <div class="row">
+      <span class="timer" title="Time left to confirm">⏱ <span data-timer="{{isop $b.HoldExpiresAt}}" data-expired="reload">–</span></span>
+      <form method="post" action="/f/bookings/{{$b.ID}}/confirm">{{template "csrf" $.CSRF}}<button class="btn primary lg">Confirm booking</button></form>
+    </div>
+  </div>
+</div>
+{{else if eq $b.Status "expired"}}
+<div class="alert warn" style="margin-bottom:18px"><div>The 15-minute hold ran out before you confirmed, so the space was released. <a href="/f/book?rebook={{$b.ID}}">Book again with the same cargo</a>.</div></div>
+{{else if eq $b.Status "cancelled"}}
+<div class="alert" style="margin-bottom:18px">This booking was cancelled{{with $b.CancelledAt}} on {{dtp .}}{{end}}.</div>
+{{end}}
+
+{{with $d.Move}}
+<div class="card warn" style="margin-bottom:18px">
+  <div class="eyebrow amber">Eimsky asks · please answer before the plan locks</div>
+  <h2 style="margin:6px 0">Move your {{n1 $b.CBM}} CBM to {{.TargetLabel}}{{with $d.ToSailing}} ({{.Label}}{{with .Vessel}}, ETD {{day .ETD}}{{end}}){{end}}?</h2>
+  <p>Reason: <b>{{.Reason}}</b>. Your cost cap of USD {{moneyShort $b.CapCents}} stays the same. If you decline, your cargo goes with our co-load partner on {{$b.Sailing.Label}}.</p>
+  <div class="row">
+    <form method="post" action="/f/moves/{{.ID}}/accept">{{template "csrf" $.CSRF}}<button class="btn primary">Accept move</button></form>
+    <form method="post" action="/f/moves/{{.ID}}/decline" data-confirm="Decline? Your cargo will be co-loaded on the original sailing.">{{template "csrf" $.CSRF}}<button class="btn">Decline, co-load instead</button></form>
+  </div>
+</div>
+{{end}}
+
+{{if or (eq $b.Status "booked") (eq $b.Status "held")}}
+<div class="card" style="margin-bottom:18px">{{template "tracker" $d.Steps}}</div>
+{{end}}
+
+<div class="grid cols-2" style="align-items:start">
+  <div class="stack">
+    {{if $b.Priced}}
+    <section class="card">
+      <div class="eyebrow green">Your final cost{{if lt (deref $b.TotalCents) $b.CapCents}} · below the USD {{moneyShort $b.CapCents}} estimate{{else}} · held at your estimate{{end}}</div>
+      <div class="big" style="margin:8px 0 14px">USD {{moneyP $b.TotalCents}}</div>
+      {{if eq $b.Mode "coload"}}
+      <div class="kv"><span>Co-load partner rate, {{n2 $b.WM}} W/M</span><span class="mono">USD {{moneyP $b.FreightCents}}</span></div>
+      {{else}}
+      <div class="kv"><span>Your share: {{n2 $b.WM}} W/M of the winning bid</span><span class="mono">USD {{moneyP $b.FreightCents}}</span></div>
+      {{end}}
+      <div class="kv"><span>Eimsky fee: {{n2 $b.WM}} W/M</span><span class="mono">USD {{moneyP $b.FeeCents}}</span></div>
+      {{if $b.CapApplied}}<div class="kv"><span>Held at your booking estimate</span><span class="mono green">− USD {{money (sub64 (add64 (deref $b.FreightCents) (deref $b.FeeCents)) (deref $b.TotalCents))}}</span></div>{{end}}
+      <div class="kv"><span><b style="color:var(--ink)">Total to pay</b></span><span class="mono">USD {{moneyP $b.TotalCents}}</span></div>
+      <p class="muted small" style="margin-top:12px">USD {{usd2 $d.PerWM}} per W/M, all in.{{if $d.Carrier}} Carried by <b>{{$d.Carrier}}</b>{{with $d.Vessel}} on {{.Label}}, {{.ServiceLabel}}: ETD {{day .ETD}}, ETA {{day .ETA}}{{end}}. The forwarder now has your contact for pickup at the origin CFS.{{end}}</p>
+      {{with $d.Invoice}}
+      <div class="row" style="margin-top:6px"><a class="btn" href="/f/bookings/{{$b.ID}}/invoice.pdf" target="_blank" rel="noopener">{{template "icon-download"}} Invoice {{.Number}}</a>{{template "status-pill" .Status}}</div>
+      {{else}}
+      <p class="small amber" style="margin:0">The invoice from Eimsky appears here once documents are complete.</p>
+      {{end}}
+    </section>
+    {{else if ne $b.Status "cancelled"}}
+    <section class="card">
+      <div class="eyebrow">Estimated cost</div>
+      <div class="big-sm" style="margin:8px 0">Up to USD {{moneyShort $b.CapCents}}</div>
+      <p class="muted small">Forwarders bid on the full container once the plan locks. Your final cost is your share of the winning bid plus the Eimsky fee, and never more than this estimate.</p>
+    </section>
+    {{end}}
+
+    {{with $d.Box}}
+    <section class="card">
+      <div class="card-head" style="margin-bottom:10px"><h3>Your space in the {{.Code}}</h3><span class="muted small">{{pct .FillPct}} full</span></div>
+      <div class="box-vis mine" role="img" aria-label="Your {{n1 .Mine}} CBM in a {{.Code}}">
+        <div class="lot you" style="width:{{lotWidth .Mine .Usable}}">You<small>{{n1 .Mine}}</small></div>
+        {{if gt .Others 0.0}}<div class="lot" style="width:{{lotWidth .Others .Usable}}">Other shippers</div>{{end}}
+        {{if gt .Free 0.05}}<div class="free" style="flex:1">{{n1 .Free}}<small>free</small></div>{{end}}
+      </div>
+      <p class="faint small" style="margin:8px 0 0">Other shippers' names, cargo and prices are never shown.</p>
+    </section>
+    {{end}}
+
+    <section class="card">
+      <h3 style="margin-bottom:10px">Sailing</h3>
+      {{with $d.Vessel}}
+      <div class="kv"><span>Vessel</span><span>{{.Label}} · {{.ServiceLabel}}</span></div>
+      <div class="kv"><span>ETD {{$b.Sailing.Lane.Origin.Name}}</span><span>{{dt .ETD}}</span></div>
+      <div class="kv"><span>ETA {{$b.Sailing.Lane.Dest.Name}}</span><span>{{dt .ETA}}</span></div>
+      {{end}}
+      <div class="kv"><span>CFS cut-off</span><span>{{dt $b.Sailing.CFSCutoff}}</span></div>
+      {{if $b.Sailing.Lane.OriginCFS}}<div class="kv"><span>Origin CFS</span><span>{{$b.Sailing.Lane.OriginCFS}}</span></div>{{end}}
+    </section>
+  </div>
+
+  <div class="stack">
+    <section class="card" id="documents">
+      <div class="card-head" style="margin-bottom:4px"><h3>Required documents</h3><span class="muted small">Due before cut-off, {{dt $b.Sailing.CFSCutoff}}</span></div>
+      {{range $d.Docs}}
+      <div class="doc">
+        <span class="ic {{if .Doc}}ok{{end}}">{{if .Doc}}{{template "icon-check"}}{{else}}{{template "icon-file"}}{{end}}</span>
+        <div class="body">
+          <div class="name">{{.Label}}</div>
+          <div class="sub">{{if .Doc}}{{if .Doc.PurgedAt}}Deleted after handover{{else}}<a href="/docs/{{.Doc.ID}}" target="_blank" rel="noopener">{{.Doc.Filename}}</a> · uploaded{{end}}{{else}}{{if .Required}}{{.Help}}{{else}}{{.Help}}{{end}}{{end}}</div>
+        </div>
+        {{if .ByOther}}
+          <span class="pill {{if .Doc}}green{{end}}">{{if .Doc}}DONE{{else}}WAITING{{end}}</span>
+        {{else if .Doc}}
+          <span class="pill green">DONE</span>
+          {{if and (not .Doc.PurgedAt) $d.CanUpload}}
+          <form method="post" action="/f/bookings/{{$b.ID}}/docs" enctype="multipart/form-data" data-keep-scroll class="upload btn sm ghost" title="Replace file">{{template "csrf" $.CSRF}}<input type="hidden" name="kind" value="{{.Kind}}">Replace<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" data-autosubmit aria-label="Replace {{.Label}}"></form>
+          {{end}}
+        {{else if $d.CanUpload}}
+          <form method="post" action="/f/bookings/{{$b.ID}}/docs" enctype="multipart/form-data" data-keep-scroll class="upload btn sm {{if .Required}}primary{{end}}">{{template "csrf" $.CSRF}}<input type="hidden" name="kind" value="{{.Kind}}">{{template "icon-upload"}} Upload<input type="file" name="file" accept=".pdf,.jpg,.jpeg,.png" data-autosubmit aria-label="Upload {{.Label}}"></form>
+        {{end}}
+      </div>
+      {{end}}
+      <p class="foot-note">PDF, JPG or PNG, up to 10 MB. 🔒 Files are encrypted, sent to your forwarder by secure link, then deleted by Eimsky.</p>
+    </section>
+
+    <section class="card">
+      <h3 style="margin-bottom:6px">Cargo</h3>
+      <div class="table-wrap">
+      <table>
+        <thead><tr><th>HS code</th><th class="right">Pieces</th><th class="right">L × W × H cm</th><th class="right">kg</th><th class="right">CBM</th></tr></thead>
+        <tbody>
+        {{range $d.Lines}}
+        <tr><td class="mono">{{.HSCode}}{{if .Description}}<div class="faint small" style="font-family:var(--sans)">{{.Description}}</div>{{end}}</td><td class="right num">{{.Pieces}}</td><td class="right num">{{n0 .LengthCm}} × {{n0 .WidthCm}} × {{n0 .HeightCm}}</td><td class="right num">{{thousands .Kg}}</td><td class="right mono">{{n2 .CBM}}</td></tr>
+        {{end}}
+        </tbody>
+        <tfoot><tr><td>Total</td><td class="right num">{{$b.Pieces}}</td><td></td><td class="right num">{{thousands $b.Kg}} kg</td><td class="right mono">{{n2 $b.CBM}}</td></tr></tfoot>
+      </table>
+      </div>
+      <p class="faint small" style="margin:8px 0 0">Chargeable {{n2 $b.WM}} W/M (the larger of CBM and tonnes).</p>
+    </section>
+  </div>
+</div>
+
+{{if $d.CanCancel}}
+<dialog id="cancel-dlg">
+  <form method="post" action="/f/bookings/{{$b.ID}}/cancel">{{template "csrf" $.CSRF}}
+    <div class="d-head"><h2>Cancel {{$b.Ref}}?</h2></div>
+    <div class="d-body"><p class="muted">Your {{n2 $b.CBM}} CBM is released for other factories. You can book again any time before the plan locks.</p>
+      <div class="field"><label for="reason">Reason <span class="faint">(optional)</span></label><input id="reason" name="reason" placeholder="e.g. supplier delayed"></div></div>
+    <div class="d-foot"><button type="button" class="btn" data-close>Keep booking</button><button class="btn danger">Cancel booking</button></div>
+  </form>
+</dialog>
+{{end}}
+{{end}}

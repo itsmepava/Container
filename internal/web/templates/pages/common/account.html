@@ -1,0 +1,54 @@
+{{define "mainclass"}}narrow{{end}}
+{{define "content"}}
+<div class="page-head"><div><h1>Your account</h1><div class="sub">{{.User.Role.Label}}{{if .D.Company}} · {{.D.Company.Name}}{{end}}</div></div>
+  <form method="post" action="/logout">{{template "csrf" .CSRF}}<button class="btn">Sign out</button></form>
+</div>
+<div class="stack">
+  {{if and .D.Company (ne .D.Company.Status "approved")}}
+  <div class="alert warn"><div><b>{{.D.Company.Name}} is {{.D.Company.Status}}.</b> {{if eq .D.Company.Status "pending"}}Eimsky checks new accounts within one working day.{{else}}{{.D.Company.StatusNote}}{{end}}</div></div>
+  {{end}}
+  <section class="card">
+    <h2 style="margin-bottom:14px">Profile</h2>
+    <form method="post" action="/account/profile">{{template "csrf" .CSRF}}
+      <div class="form-row">
+        <div class="field"><label for="name">Name</label><input id="name" name="name" value="{{.User.Name}}" required></div>
+        <div class="field"><label for="phone">Mobile</label><input id="phone" type="tel" name="phone" value="{{.User.Phone}}" placeholder="+94 77 123 4567"></div>
+      </div>
+      <div class="field"><label>Email</label><input value="{{.User.Email}}" readonly><div class="help">Ask an Eimsky admin to change your sign-in email.</div></div>
+      <button class="btn primary">Save profile</button>
+    </form>
+  </section>
+  {{if and .D.Company (eq (printf "%s" .User.Role) "factory_admin")}}
+  <section class="card">
+    <h2 style="margin-bottom:14px">Company details</h2>
+    <form method="post" action="/account/company">{{template "csrf" .CSRF}}
+      <div class="field"><label for="cname">Company name</label><input id="cname" name="name" value="{{.D.Company.Name}}" required></div>
+      <div class="form-row">
+        <div class="field"><label for="reg">Business registration no.</label><input id="reg" name="reg" value="{{.D.Company.RegNumber}}"></div>
+        <div class="field"><label for="cphone">Phone</label><input id="cphone" name="phone" value="{{.D.Company.Phone}}"></div>
+      </div>
+      <div class="field"><label for="address">Address</label><input id="address" name="address" value="{{.D.Company.Address}}"><div class="help">Shown on your invoices.</div></div>
+      <button class="btn primary">Save company</button>
+    </form>
+  </section>
+  {{end}}
+  <section class="card">
+    <h2 style="margin-bottom:14px">Notifications</h2>
+    <form method="post" action="/account/notify">{{template "csrf" .CSRF}}
+      <label class="check"><input type="checkbox" name="email_notify" data-autosubmit {{if .User.EmailNotify}}checked{{end}}> Email me about bookings, costs, documents and tenders</label>
+      <noscript><button class="btn sm" style="margin-top:10px">Save</button></noscript>
+    </form>
+  </section>
+  <section class="card">
+    <h2 style="margin-bottom:14px">Change password</h2>
+    <form method="post" action="/account/password">{{template "csrf" .CSRF}}
+      <div class="field"><label for="current">Current password</label><input id="current" type="password" name="current" autocomplete="current-password" required></div>
+      <div class="form-row">
+        <div class="field"><label for="next">New password</label><input id="next" type="password" name="next" minlength="8" autocomplete="new-password" required></div>
+        <div class="field"><label for="confirm">Type it again</label><input id="confirm" type="password" name="confirm" minlength="8" autocomplete="new-password" required></div>
+      </div>
+      <button class="btn">Change password</button>
+    </form>
+  </section>
+</div>
+{{end}}

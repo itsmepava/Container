@@ -1,0 +1,32 @@
+{{define "auth"}}<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{{.Title}} · Eimsky</title>
+<link rel="icon" href="/favicon.ico" type="image/svg+xml">
+<link rel="stylesheet" href="/static/css/app.css">
+<script src="/static/js/app.js" defer></script>
+</head>
+<body>
+<div class="auth">
+  <aside class="auth-side">
+    <div>
+      <div class="eyebrow" style="color:#8fb3e6">Eimsky</div>
+      <h1 style="margin-top:18px">Faster, cheaper raw-material imports for apparel factories</h1>
+      <p style="margin-top:14px">Book only the space you need. We fill one container per lane and week, forwarders bid on the full box, and you pay your share.</p>
+      <div class="auth-strip" aria-hidden="true">
+        <span class="lot-0" style="flex:16">Fabric</span><span class="lot-1" style="flex:11">Trims</span><span class="lot-2" style="flex:18">Fabric</span><span class="lot-3" style="flex:9">Labels</span><span class="lot-4" style="flex:13">Zips</span><span style="flex:10;border:2px dashed #3b4d68;color:#8fa3bf;border-radius:0 8px 8px 0">free</span>
+      </div>
+    </div>
+    <div class="foot faint small">© Eimsky · Colombo</div>
+  </aside>
+  <section class="auth-main">
+    <div class="auth-card">
+      {{template "flash" .}}
+      {{template "content" .}}
+    </div>
+  </section>
+</div>
+</body>
+</html>{{end}}

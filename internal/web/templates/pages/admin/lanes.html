@@ -1,0 +1,32 @@
+{{define "content"}}
+{{template "admin-tabs" .}}
+<div class="page-head"><div><h1>Lanes and sailings</h1><div class="sub">Each lane gets one pooled sailing per week. Factories book into open sailings.</div></div>
+  <div class="row"><a class="btn" href="/admin/lanes/new">+ New lane</a><a class="btn primary" href="/admin/sailings/new">+ New sailing</a></div></div>
+<div class="stack">
+{{range .D.Rows}}{{$l := .L}}
+<section class="card">
+  <div class="card-head">
+    <div><div class="row"><h2>{{$l.Label}}</h2>{{if not $l.Active}}<span class="pill red">Inactive</span>{{end}}</div>
+      <div class="muted small">Default {{$l.DefaultBox}} grade {{$l.DefaultGrade}} · co-load USD {{n2 $l.ColoadRate}}/W/M · booking estimate USD {{n2 $l.EstimatePerWM}}/W/M{{if $l.OriginCFS}} · {{$l.OriginCFS}}{{end}}
+        · expected bids {{range $code, $v := $l.Rates}}{{$code}} {{usd0 $v}} {{end}}</div></div>
+    <div class="row"><a class="btn sm" href="/admin/lanes/{{$l.ID}}">Edit lane</a><a class="btn sm" href="/admin/sailings/new?lane={{$l.ID}}">+ Sailing</a></div>
+  </div>
+  {{if .Sailings}}
+  <div class="table-wrap"><table>
+    <thead><tr><th>Week</th><th>Vessel</th><th>Plan locks</th><th>Bids close</th><th>CFS cut-off</th><th>Status</th><th></th></tr></thead>
+    <tbody>
+    {{range .Sailings}}
+    <tr class="hover" data-href="/admin/sailings/{{.ID}}"><td><b>{{.Label}}</b> <span class="faint small">{{.Year}}</span></td><td>{{with .Vessel}}{{.Label}} <span class="muted small">ETD {{day .ETD}}</span>{{end}}</td>
+      <td>{{dt .PlanLockAt}}</td><td>{{dt .BidCloseAt}}</td><td>{{dt .CFSCutoff}}</td><td>{{template "status-pill" .StatusLabel}}</td>
+      <td class="right nowrap"><a class="btn sm ghost" href="/ops/sailings/{{.ID}}/plan">Planner</a>
+        <form method="post" action="/admin/sailings/{{.ID}}/copy" class="inline-form">{{template "csrf" $.CSRF}}<button class="btn sm ghost" title="Create the following week with the same schedule">Copy to next week</button></form></td></tr>
+    {{end}}
+    </tbody>
+  </table></div>
+  {{else}}<p class="muted">No upcoming sailings. <a href="/admin/sailings/new?lane={{$l.ID}}">Create one</a>.</p>{{end}}
+</section>
+{{else}}
+<div class="card">{{template "empty" (dict "Title" "No lanes yet" "Body" "Add your first lane, then open a sailing on it." "Href" "/admin/lanes/new" "Action" "New lane")}}</div>
+{{end}}
+</div>
+{{end}}

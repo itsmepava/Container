@@ -1,0 +1,133 @@
+{{define "content"}}
+{{$f := .D}}
+{{if not $f.Approved}}
+<div class="alert warn" style="margin-bottom:18px"><div><b>Your factory is waiting for approval.</b> You can look around and price cargo now; booking opens once Eimsky approves your account (usually within one working day).</div></div>
+{{end}}
+<form id="booking" method="post" action="/f/book" hx-post="/f/book/quote" hx-trigger="change, input delay:450ms" hx-target="#quote-area" hx-swap="innerHTML" hx-sync="this:replace">
+{{template "csrf" .CSRF}}
+<div class="grid cols-main">
+  <div class="stack">
+    <section class="card">
+      <h2 style="margin-bottom:14px">1 · Lane and sailing</h2>
+      <div class="form-row">
+        <div class="field" style="margin:0"><label for="from">From</label>
+          <select id="from" name="from">{{range $f.Origins}}<option value="{{.Code}}" {{if eq .Code $f.Origin}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+        <div class="field" style="margin:0"><label for="to">To</label>
+          <select id="to" name="to">{{range $f.Dests}}<option value="{{.Code}}" {{if eq .Code $f.Dest}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+        <div class="field" style="margin:0" id="sailing-wrap">{{template "sailing-select" .}}</div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-head" style="margin-bottom:6px"><h2>2 · Cargo: dimensions and HS code</h2><span class="pill green">CBM calculated</span></div>
+      <div class="table-wrap">
+      <table id="cargo" class="cargo">
+        <colgroup><col class="c-hs"><col class="c-pcs"><col class="c-dims"><col class="c-kg"><col class="c-cbm"><col class="c-rm"></colgroup>
+        <thead><tr><th>HS code</th><th class="right">Cartons / rolls</th><th class="right">L × W × H cm</th><th class="right">kg each</th><th class="right">CBM</th><th></th></tr></thead>
+        <tbody>
+          {{range $f.LineRows}}{{template "cargo-row" .}}{{end}}
+        </tbody>
+        <tfoot><tr><td>Total</td><td class="right num" id="t-pieces">–</td><td></td><td class="right num" id="t-kg">–</td><td class="right mono" id="t-cbm">–</td><td></td></tr></tfoot>
+      </table>
+      </div>
+      <template id="cargo-row">{{template "cargo-row" emptyLine}}</template>
+      <div class="row" style="margin-top:12px">
+        <button type="button" class="btn dashed" id="add-line">+ Add cargo line</button>
+        <span class="faint small">Tip: press Enter to jump to the next box. Type a few digits or a word to search HS codes.</span>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2 style="margin-bottom:14px">3 · Container type and cargo category</h2>
+      <div class="form-row">
+        <div class="field" id="box-wrap">{{template "box-select" .}}</div>
+        <div class="field"><label for="category">Cargo category</label>
+          <select id="category" name="category">{{range categories}}<option value="{{.}}" {{if eq . $f.Category}}selected{{end}}>{{.Label}}</option>{{end}}</select></div>
+      </div>
+      <div id="checks">{{template "checks" .}}</div>
+    </section>
+  </div>
+
+  <aside class="sticky stack" id="quote-area">{{template "quote" .}}</aside>
+</div>
+</form>
+{{end}}
+
+{{define "cargo-row"}}
+<tr>
+  <td class="hs"><input class="cell hs-input mono" name="hs" value="{{.HSCode}}" placeholder="6006.32" autocomplete="off" aria-label="HS code" inputmode="decimal"></td>
+  <td><input class="cell right" name="pieces" value="{{if .Pieces}}{{.Pieces}}{{end}}" inputmode="numeric" aria-label="Cartons or rolls"></td>
+  <td><div class="dims"><input class="cell right" name="length" value="{{if .LengthCm}}{{.LengthCm}}{{end}}" inputmode="decimal" aria-label="Length cm"><span>×</span><input class="cell right" name="width" value="{{if .WidthCm}}{{.WidthCm}}{{end}}" inputmode="decimal" aria-label="Width cm"><span>×</span><input class="cell right" name="height" value="{{if .HeightCm}}{{.HeightCm}}{{end}}" inputmode="decimal" aria-label="Height cm"></div></td>
+  <td><input class="cell right" name="kg" value="{{if .KgEach}}{{.KgEach}}{{end}}" inputmode="decimal" aria-label="kg each"></td>
+  <td class="right mono cbm">–</td>
+  <td><button type="button" class="linkbtn red rm" title="Remove line" aria-label="Remove line">✕</button></td>
+</tr>
+{{end}}
+
+{{define "sailing-select"}}{{$f := .D}}
+<label for="sailing">Sailing week</label>
+<select id="sailing" name="sailing" {{if not $f.Sailings}}disabled{{end}}>
+  {{range $f.Sailings}}<option value="{{.ID}}" {{if eq .ID $f.SailingID}}selected{{end}}>{{.Label}} · ETD {{with .Vessel}}{{day .ETD}}{{end}}</option>{{else}}<option>No open sailings</option>{{end}}
+</select>
+{{end}}
+
+{{define "box-select"}}{{$f := .D}}
+<label for="box">Container type</label>
+<select id="box" name="box" {{if not $f.Boxes}}disabled{{end}}>
+  {{range $f.Boxes}}<option value="{{.Code}}" {{if eq .Code $f.BoxCode}}selected{{end}}>{{.Label}}</option>{{else}}<option>–</option>{{end}}
+</select>
+{{end}}
+
+{{define "checks"}}{{$f := .D}}{{$q := $f.Quote}}
+{{if not $q}}
+{{else if not $f.Touched}}<div class="alert info">Add your cargo lines and we'll check them against this container as you type.</div>
+{{else if $q.AllPassed}}<div class="alert good">All checks passed: HS codes valid, category allowed in this container, fits remaining space, before CFS cut-off.</div>
+{{else}}<div class="alert {{if $q.Problems}}bad{{else}}warn{{end}}"><div>{{if $q.Problems}}<b>Fix these to book:</b>{{else}}<b>Heads up:</b>{{end}}<ul>{{range $q.Problems}}<li>{{.}}</li>{{end}}{{range $q.Warnings}}<li>{{.}}</li>{{end}}</ul></div></div>
+{{end}}
+{{end}}
+
+{{define "quote-swap"}}
+{{template "quote" .}}
+<div id="sailing-wrap" class="field" style="margin:0" hx-swap-oob="true">{{template "sailing-select" .}}</div>
+<div id="box-wrap" class="field" hx-swap-oob="true">{{template "box-select" .}}</div>
+<div id="checks" hx-swap-oob="true">{{template "checks" .}}</div>
+{{end}}
+
+{{define "quote"}}{{$f := .D}}{{$q := $f.Quote}}
+{{if not $f.Lane}}
+  <div class="card">{{template "empty" (dict "Title" "No pooled service on this lane yet" "Body" "Choose another origin or destination. Tell Eimsky which lanes you need and we'll add them.")}}</div>
+{{else if not $f.Sailing}}
+  <div class="card">{{template "empty" (dict "Title" "No open sailings right now" "Body" "Bookings for the next week open soon. Check back, or choose another lane.")}}</div>
+{{else}}
+  {{$v := $f.Sailing.Vessel}}
+  <div class="card accent">
+    <div class="card-band eyebrow">Selected container · {{$f.Sailing.Label}}</div>
+    <div class="row" style="align-items:baseline;gap:10px"><span class="big num">{{n1 $q.Space.Free}}</span><span class="muted">CBM remaining in {{$f.BoxCode}}</span></div>
+    <div class="meter" style="margin:14px 0 6px"><span style="width:{{pctw $q.Space.FillPct}}"></span></div>
+    <div class="muted small">{{pct $q.Space.FillPct}} filled{{if gt $q.CBM 0.0}} · {{if $q.Fits}}your {{n2 $q.CBM}} CBM fits{{else}}<span class="amber">your {{n2 $q.CBM}} CBM doesn't fit</span>{{end}}{{end}}</div>
+    <div style="margin-top:12px">
+      <div class="kv"><span>Vessel</span><span>{{$v.Label}}</span></div>
+      <div class="kv"><span>ETD {{$f.Lane.Origin.Name}}</span><span>{{day $v.ETD}}</span></div>
+      <div class="kv"><span>ETA {{$f.Lane.Dest.Name}}</span><span>{{day $v.ETA}}</span></div>
+      <div class="kv"><span>CFS cut-off</span><span class="amber">{{dt $f.Sailing.CFSCutoff}} · <span data-countdown="{{iso $f.Sailing.CFSCutoff}}">{{until $f.Sailing.CFSCutoff}}</span> left</span></div>
+    </div>
+  </div>
+  <div class="card">
+    {{if gt $q.CBM 0.0}}
+      <h3>Estimated cost: up to USD {{moneyShort $q.CapCents}}</h3>
+      <p class="muted small" style="margin:6px 0 0">Final cost comes from forwarder bidding and never goes above this estimate.</p>
+    {{else}}
+      <h3>Your estimate appears here</h3>
+      <p class="muted small" style="margin:6px 0 0">At most USD {{usd0 $f.Lane.EstimatePerWM}} per W/M. Final cost comes from forwarder bidding and never goes above the estimate.</p>
+    {{end}}
+  </div>
+  {{if and (gt $q.CBM 0.0) (not $q.Fits) $q.CanBook}}
+  <label class="check card tight warn" style="margin:0"><input type="checkbox" name="overflow" required {{if $f.AllowOverflow}}checked{{end}}> <span>Book anyway. Eimsky will offer the next sailing or co-loading, and my cost cap stays the same.</span></label>
+  {{end}}
+  <button class="btn primary lg block" type="submit" {{if not (and $q.CanBook $f.Approved)}}disabled{{end}}>Book <span id="book-cbm">{{cbm $q.CBM}}</span> CBM</button>
+  <div>
+    <p class="lock-note">Space is held for {{$f.HoldMinutes}} minutes while you confirm. Other shippers in this container are never shown.</p>
+    <p class="lock-note">🔒 We keep only size, weight, HS code and category. No prices, buyers, orders or styles.</p>
+  </div>
+{{end}}
+{{end}}

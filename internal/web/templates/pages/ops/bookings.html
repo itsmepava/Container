@@ -1,0 +1,34 @@
+{{define "content"}}
+<div class="page-head"><div><h1>Bookings</h1><div class="sub">Every factory booking across lanes.</div></div>
+  <form method="get" class="row"><input type="search" name="q" value="{{.D.Q}}" placeholder="Search ref or factory" style="width:240px"><input type="hidden" name="status" value="{{.D.Status}}"><button class="btn">Search</button></form>
+</div>
+<div class="tabs">
+  {{$q := .D.Q}}
+  <a href="/ops/bookings?q={{$q}}" class="{{if eq .D.Status ""}}on{{end}}">All</a>
+  <a href="/ops/bookings?status=booked&q={{$q}}" class="{{if eq .D.Status "booked"}}on{{end}}">Booked</a>
+  <a href="/ops/bookings?status=unplaced&q={{$q}}" class="{{if eq .D.Status "unplaced"}}on{{end}}">Waiting to place</a>
+  <a href="/ops/bookings?status=coload&q={{$q}}" class="{{if eq .D.Status "coload"}}on{{end}}">Co-load</a>
+  <a href="/ops/bookings?status=held&q={{$q}}" class="{{if eq .D.Status "held"}}on{{end}}">On hold</a>
+  <a href="/ops/bookings?status=cancelled&q={{$q}}" class="{{if eq .D.Status "cancelled"}}on{{end}}">Cancelled</a>
+</div>
+<div class="card flush">
+{{if .D.Bookings}}
+<div class="table-wrap"><table class="table-card">
+  <thead><tr><th>Booking</th><th>Factory</th><th>Lane · sailing</th><th>Category</th><th class="right">CBM</th><th>Status</th><th>Docs</th><th class="right">Cost USD</th></tr></thead>
+  <tbody>
+  {{range .D.Bookings}}
+  <tr class="hover" data-href="/ops/bookings/{{.ID}}">
+    <td><a class="mono" href="/ops/bookings/{{.ID}}"><b>{{.Ref}}</b></a></td><td>{{.CompanyName}}</td>
+    <td>{{.Sailing.Lane.Short}}<div class="muted small">{{.Sailing.Label}} · {{.BoxCode}}</div></td><td>{{cat .Category}}</td>
+    <td class="right mono">{{n2 .CBM}}</td><td>{{template "status-pill" .StatusLabel}}</td>
+    <td>{{with index $.D.Missing .ID}}<span class="pill amber">{{join . ", "}}</span>{{else}}<span class="pill green">OK</span>{{end}}</td>
+    <td class="right mono">{{if .Priced}}{{moneyP .TotalCents}}{{else}}<span class="muted">≤ {{moneyShort .CapCents}}</span>{{end}}</td>
+  </tr>
+  {{end}}
+  </tbody>
+</table></div>
+{{else}}
+{{template "empty" (dict "Title" "No bookings match" "Body" "Try another search or tab.")}}
+{{end}}
+</div>
+{{end}}

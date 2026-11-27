@@ -238,3 +238,12 @@ func (a *App) InvoicePDF(ctx context.Context, u *User, inv *Invoice) ([]byte, er
 	}
 	return buf.Bytes(), nil
 }
+
+// InvoiceByID loads an invoice for staff.
+func (a *App) InvoiceByID(ctx context.Context, id int64) (*Invoice, error) {
+	vs, err := a.queryInvoices(ctx, `i.id=$1`, id)
+	if err != nil || len(vs) == 0 {
+		return nil, ErrNotFound
+	}
+	return vs[0], nil
+}

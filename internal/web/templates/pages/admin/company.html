@@ -1,0 +1,71 @@
+{{define "content"}}
+{{$c := .D.C}}
+<div class="page-head">
+  <div><a href="/admin/companies" class="small">‹ Companies</a>
+    <div class="row" style="margin-top:4px"><h1>{{$c.Name}}</h1><span class="pill">{{$c.KindLabel}}</span>{{template "status-pill" $c.Status}}</div>
+    <div class="sub">{{if $c.RegNumber}}Reg. {{$c.RegNumber}} · {{end}}{{if $c.Email}}{{$c.Email}} · {{end}}{{if $c.Phone}}{{$c.Phone}} · {{end}}joined {{date $c.CreatedAt}}</div></div>
+</div>
+{{if eq $c.Status "pending"}}
+<div class="card warn" style="margin-bottom:18px">
+  <div class="eyebrow amber">Waiting for approval{{with $c.SubmittedAt}} · submitted {{ago .}}{{end}}</div>
+  <p style="margin:6px 0 12px">Check the documents below, then approve or send it back with a reason the company will see.</p>
+  <div class="row">
+    <form method="post" action="/admin/companies/{{$c.ID}}/status">{{template "csrf" .CSRF}}<input type="hidden" name="status" value="approved"><button class="btn green">Approve</button></form>
+    <button class="btn danger" data-open="reject-dlg">Needs changes…</button>
+  </div>
+</div>
+{{end}}
+<div class="grid cols-2" style="align-items:start">
+<div class="stack">
+  <section class="card">
+    <h3 style="margin-bottom:8px">People</h3>
+    {{range .D.Users}}<div class="kv"><span>{{if .Name}}{{.Name}}{{else}}(no name yet){{end}} · {{.Role.Label}}{{if not .Active}} · off{{end}}</span><span>{{.Email}}{{if .Phone}} {{.Phone}}{{end}}</span></div>{{else}}<p class="muted">No users.</p>{{end}}
+  </section>
+  {{if eq $c.Kind "forwarder"}}
+  <section class="card">
+    <h3 style="margin-bottom:8px">Lanes served</h3>
+    {{range .D.Lanes}}{{if inIDs .ID $c.LaneIDs}}<div class="kv"><span>{{.Short}}</span><span></span></div>{{end}}{{end}}
+    {{if not $c.LaneIDs}}<p class="muted">None chosen yet.</p>{{end}}
+  </section>
+  {{end}}
+  {{with .D.Bookings}}
+  <section class="card flush">
+    <h3 style="padding:16px 20px 0">Recent bookings</h3>
+    <div class="table-wrap"><table class="table-card"><tbody>
+    {{range .}}<tr class="hover" data-href="/ops/bookings/{{.ID}}"><td class="mono"><a href="/ops/bookings/{{.ID}}">{{.Ref}}</a></td><td>{{.Sailing.Lane.Short}} · {{.Sailing.Label}}</td><td class="right mono">{{n2 .CBM}}</td><td>{{template "status-pill" .StatusLabel}}</td></tr>{{end}}
+    </tbody></table></div>
+  </section>
+  {{end}}
+</div>
+<div class="stack">
+  {{if eq $c.Kind "forwarder"}}
+  <section class="card">
+    <h3 style="margin-bottom:4px">Registration documents</h3>
+    {{range .D.Docs}}<div class="doc"><span class="ic ok">{{template "icon-check"}}</span><div class="body"><div class="name">{{docLabel .Kind}}</div><div class="sub"><a href="/docs/{{.ID}}" target="_blank" rel="noopener">{{.Filename}}</a> · {{.SizeLabel}} · {{ago .UploadedAt}}</div></div></div>
+    {{else}}<p class="muted">No documents yet.</p>{{end}}
+  </section>
+  {{end}}
+  <section class="card">
+    <h3 style="margin-bottom:10px">Account status</h3>
+    <form method="post" action="/admin/companies/{{$c.ID}}/status">{{template "csrf" .CSRF}}
+      <div class="form-row">
+        <div class="field"><label>Status</label><select name="status">{{range list2s "approved" "suspended"}}<option value="{{.}}" {{if eq . $c.Status}}selected{{end}}>{{title .}}</option>{{end}}{{if eq $c.Status "pending"}}<option value="pending" selected>Pending</option>{{end}}{{if eq $c.Status "rejected"}}<option value="rejected" selected>Rejected</option>{{end}}</select></div>
+        <div class="field"><label>Note to the company</label><input name="note" value="{{$c.StatusNote}}" placeholder="Required for suspend"></div>
+      </div>
+      <button class="btn">Update status</button>
+    </form>
+  </section>
+  <section class="card">
+    <h3 style="margin-bottom:8px">History</h3>
+    {{if .D.Audit}}<ul class="feed">{{range .D.Audit}}<li><time>{{hm .At}}</time><span>{{.Summary}} <span class="faint">· {{.ActorName}}</span></span></li>{{end}}</ul>{{else}}<p class="muted">Nothing yet.</p>{{end}}
+  </section>
+</div>
+</div>
+<dialog id="reject-dlg">
+  <form method="post" action="/admin/companies/{{$c.ID}}/status">{{template "csrf" .CSRF}}<input type="hidden" name="status" value="rejected">
+    <div class="d-head"><h2>What needs to change?</h2></div>
+    <div class="d-body"><div class="field"><label for="note">Message to {{$c.Name}}</label><textarea id="note" name="note" required placeholder="e.g. The forwarder licence photo is unreadable. Please upload a clear copy."></textarea></div></div>
+    <div class="d-foot"><button type="button" class="btn" data-close>Cancel</button><button class="btn danger">Send back</button></div>
+  </form>
+</dialog>
+{{end}}

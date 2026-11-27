@@ -1,0 +1,12 @@
+{{define "content"}}
+{{template "admin-tabs" .}}
+<div class="page-head"><div><h1>Email outbox</h1><div class="sub">Development only. Without SMTP configured, emails are logged and shown here instead of sent.</div></div></div>
+<div class="stack-sm">
+{{range .D}}
+<details class="card tight">
+  <summary class="row between" style="cursor:pointer"><span><b>{{.Subject}}</b> <span class="muted small">to {{.To}}</span></span><span class="faint small">{{ago .CreatedAt}}</span></summary>
+  <pre class="mail">{{.Body}}</pre>
+</details>
+{{else}}<div class="card">{{template "empty" (dict "Title" "No emails yet" "Body" "Emails appear here as they're queued.")}}</div>{{end}}
+</div>
+{{end}}

@@ -1,0 +1,9 @@
+/data/
+/bin/
+*.test
+.env
+node_modules/
+/mobile/.expo/
+/mobile/dist/
+/e2e/test-results/
+/e2e/screenshots/

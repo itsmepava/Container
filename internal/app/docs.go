@@ -2,6 +2,9 @@ package app
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -406,4 +409,33 @@ func (a *App) PurgeDocuments(ctx context.Context) (int, error) {
 		_ = a.Audit(ctx, a.DB, nil, "document.purge", "documents", 0, fmt.Sprintf("Deleted %d shipment document(s) after handover", len(items)), nil)
 	}
 	return len(items), nil
+}
+
+// SignDocLink returns query parameters for a short-lived link to a document
+// the user may read, so a phone can open it in the browser without its token.
+func (a *App) SignDocLink(ctx context.Context, u *User, docID int64, ttl time.Duration) (string, error) {
+	d, err := scanDoc(a.DB.QueryRow(ctx, `SELECT `+docCols+` FROM documents WHERE id=$1`, docID))
+	if err != nil || !a.canReadDoc(ctx, u, d) {
+		return "", ErrNotFound
+	}
+	exp := a.Now().Add(ttl).Unix()
+	return fmt.Sprintf("uid=%d&exp=%d&sig=%s", u.ID, exp, a.docSig(docID, u.ID, exp)), nil
+}
+
+func (a *App) docSig(docID, uid, exp int64) string {
+	m := hmac.New(sha256.New, a.Cfg.FileKey)
+	fmt.Fprintf(m, "doc:%d:%d:%d", docID, uid, exp)
+	return hex.EncodeToString(m.Sum(nil))
+}
+
+// OpenSignedDoc checks a signed link and returns the document.
+func (a *App) OpenSignedDoc(ctx context.Context, docID, uid, exp int64, sig string) (*Document, []byte, error) {
+	if a.Now().Unix() > exp || !hmac.Equal([]byte(sig), []byte(a.docSig(docID, uid, exp))) {
+		return nil, nil, Errf("This link has expired. Open the document again from the app.")
+	}
+	u, err := a.UserByID(ctx, uid)
+	if err != nil || !u.Active {
+		return nil, nil, ErrNotFound
+	}
+	return a.OpenDoc(ctx, u, docID)
 }

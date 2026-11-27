@@ -41,6 +41,7 @@ func (x *API) Handler() http.Handler {
 		r.Get("/meta", x.meta)
 		r.Post("/auth/otp", x.otp)
 		r.Post("/auth/verify", x.verify)
+		r.Get("/files/{id}", x.signedFile)
 		r.Group(func(r chi.Router) {
 			r.Use(x.auth)
 			r.Post("/auth/logout", x.logout)
@@ -56,6 +57,7 @@ func (x *API) Handler() http.Handler {
 			r.Get("/notifications", x.notifications)
 			r.Post("/notifications/read", x.readNotifications)
 			r.Get("/documents/{id}", x.document)
+			r.Get("/documents/{id}/link", x.documentLink)
 			r.Group(func(r chi.Router) {
 				r.Use(approved)
 				r.Get("/tenders", x.tenders)
@@ -618,4 +620,32 @@ func (x *API) confirmation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ok(w, toDoc(d))
+}
+
+func (x *API) documentLink(w http.ResponseWriter, r *http.Request) {
+	q, err := x.app.SignDocLink(r.Context(), userOf(r), idParam(r), 10*time.Minute)
+	if err != nil {
+		x.err(w, err)
+		return
+	}
+	ok(w, map[string]string{"url": x.app.Cfg.BaseURL + "/api/v1/files/" + chi.URLParam(r, "id") + "?" + q})
+}
+
+func (x *API) signedFile(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query()
+	uid, _ := strconv.ParseInt(q.Get("uid"), 10, 64)
+	exp, _ := strconv.ParseInt(q.Get("exp"), 10, 64)
+	d, data, err := x.app.OpenSignedDoc(r.Context(), idParam(r), uid, exp, q.Get("sig"))
+	if err != nil {
+		msg, _ := app.IsUserError(err)
+		if msg == "" {
+			msg = "Not found."
+		}
+		http.Error(w, msg, http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", d.ContentType)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`inline; filename="%s"`, strings.ReplaceAll(d.Filename, `"`, "")))
+	w.Header().Set("Cache-Control", "private, no-store")
+	w.Write(data)
 }

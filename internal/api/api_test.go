@@ -164,6 +164,17 @@ func TestForwarderFlow(t *testing.T) {
 	docs := aw.Shippers[0]["documents"].([]any)
 	w.do("GET", "/documents/"+itoa(int64(docs[0].(map[string]any)["id"].(float64))), nil, 200, nil)
 	c.do("GET", "/documents/"+itoa(int64(docs[0].(map[string]any)["id"].(float64))), nil, 404, nil)
+	var link struct{ URL string }
+	w.do("GET", "/documents/"+itoa(int64(docs[0].(map[string]any)["id"].(float64)))+"/link", nil, 200, &link)
+	path := link.URL[len("http://t"):]
+	resp, err := http.Get(ts.URL + path)
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatalf("signed link: %v %v", err, resp.Status)
+	}
+	resp, _ = http.Get(ts.URL + path + "0")
+	if resp.StatusCode != 404 {
+		t.Fatal("tampered link accepted")
+	}
 	w.do("POST", "/tenders/"+itoa(closed[0].ID)+"/confirmation", upload("booking_confirmation"), 200, nil)
 	c.do("POST", "/tenders/"+itoa(closed[0].ID)+"/confirmation", upload("booking_confirmation"), 400, nil)
 	var won []tenderJSON

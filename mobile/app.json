@@ -1,0 +1,65 @@
+{
+  "expo": {
+    "name": "Eimsky Forwarder",
+    "slug": "eimsky-forwarder",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.eimsky.forwarder",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Take a photo of your licence or booking confirmation to upload it."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B4EA2",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "package": "com.eimsky.forwarder",
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-status-bar",
+      "expo-secure-store",
+      "expo-web-browser",
+      [
+        "expo-notifications",
+        {
+          "color": "#0B4EA2"
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "cameraPermission": "Take a photo of your licence or booking confirmation to upload it."
+        }
+      ],
+      "expo-font"
+    ],
+    "scheme": "eimsky",
+    "primaryColor": "#0B4EA2",
+    "experiments": {
+      "typedRoutes": true
+    },
+    "extra": {
+      "apiUrl": "http://localhost:8080",
+      "eas": {
+        "projectId": ""
+      }
+    }
+  }
+}

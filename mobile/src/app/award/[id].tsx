@@ -1,0 +1,114 @@
+import * as WebBrowser from 'expo-web-browser';
+import { Stack, useLocalSearchParams } from 'expo-router';
+import React, { useCallback, useEffect, useState } from 'react';
+import { Linking, Platform, RefreshControl, Text, View } from 'react-native';
+import { Banner, Body, Button, Card, DocRow, Eyebrow, H1, H2, KV, Loading, Pill, Row, Screen } from '@/components/ui';
+import { api, Award } from '@/lib/api';
+import { day, dayTime, money } from '@/lib/format';
+import { useTheme } from '@/lib/theme';
+import { chooseFile } from '../register';
+
+async function openDoc(id: number) {
+  const { url } = await api.documentLink(id);
+  if (Platform.OS === 'web') globalThis.open?.(url, '_blank');
+  else await WebBrowser.openBrowserAsync(url);
+}
+
+export default function AwardScreen() {
+  const t = useTheme();
+  const id = Number(useLocalSearchParams<{ id: string }>().id);
+  const [award, setAward] = useState<Award | null>(null);
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      setAward(await api.award(id));
+    } catch (e) {
+      setError((e as Error).message);
+    }
+  }, [id]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function upload() {
+    setError('');
+    setMsg('');
+    try {
+      const f = await chooseFile();
+      if (!f) return;
+      setBusy(true);
+      await api.uploadConfirmation(id, f);
+      setMsg('Booking confirmation uploaded. The shippers have been told.');
+      await load();
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (!award) return error ? <Screen><Banner tone="red" text={error} /></Screen> : <Loading />;
+  const tn = award.tender;
+  const totalKg = award.shippers.reduce((s, x) => s + x.kg, 0);
+  return (
+    <>
+      <Stack.Screen options={{ title: tn.ref }} />
+      <Screen refresh={<RefreshControl refreshing={refreshing} onRefresh={async () => { setRefreshing(true); await load(); setRefreshing(false); }} />}>
+        <Eyebrow color={t.green}>You won · USD {money(tn.wonAmount ?? 0)}</Eyebrow>
+        <H1>{tn.lane} · 1 × {tn.boxCode}</H1>
+        <Card>
+          <KV k="Vessel" v={tn.vessel ? `${tn.vessel.label} · ${tn.vessel.serviceText}` : '–'} />
+          <KV k="ETD · ETA" v={tn.vessel ? `${day(tn.vessel.etd)} · ${day(tn.vessel.eta)}` : '–'} />
+          <KV k="CFS cut-off" v={dayTime(tn.cfsCutoff)} />
+          {award.originCfs ? <KV k="Origin CFS" v={award.originCfs} /> : null}
+          <KV k="Cargo" v={`${tn.cbm.toFixed(1)} CBM · ${(totalKg / 1000).toFixed(1)} t · ${award.shippers.length} shippers`} last />
+        </Card>
+
+        <Card tone={award.confirmation ? 'good' : 'accent'} style={{ gap: 10 }}>
+          <H2>Your booking confirmation</H2>
+          {award.confirmation ? (
+            <DocRow label={award.confirmation.filename} sub={`Uploaded · ${award.confirmation.size}`} done action={<Button title="Replace" kind="ghost" onPress={upload} loading={busy} style={{ minHeight: 40 }} />} />
+          ) : (
+            <>
+              <Body>Upload the carrier's booking confirmation so Eimsky can invoice the shippers.</Body>
+              <Button title="Upload booking confirmation" onPress={upload} loading={busy} testID="upload-confirmation" />
+            </>
+          )}
+          {msg ? <Banner tone="green" text={msg} /> : null}
+          {error ? <Banner tone="red" text={error} /> : null}
+        </Card>
+
+        <H2 style={{ marginTop: 6 }}>Shippers in this box</H2>
+        <Body small muted>Contact them for pickup at the origin CFS. Documents open by secure link and are deleted by Eimsky after handover.</Body>
+        {award.shippers.map(s => (
+          <Card key={s.bookingRef} style={{ gap: 6 }}>
+            <Row style={{ justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', color: t.ink, flex: 1 }}>{s.company}</Text>
+              <Pill label={`${s.cbm.toFixed(1)} CBM`} />
+            </Row>
+            <Body small muted>{s.bookingRef} · {s.category} · {Math.round(s.kg).toLocaleString()} kg</Body>
+            <Body>{s.contactName}</Body>
+            <Row style={{ flexWrap: 'wrap' }}>
+              {s.phone ? <Button title={`Call ${s.phone}`} kind="secondary" onPress={() => Linking.openURL(`tel:${s.phone}`)} style={{ minHeight: 40 }} /> : null}
+              {s.email ? <Button title="Email" kind="secondary" onPress={() => Linking.openURL(`mailto:${s.email}?subject=${encodeURIComponent(s.bookingRef + ' pickup')}`)} style={{ minHeight: 40 }} /> : null}
+            </Row>
+            {s.documents.length ? (
+              <View>
+                {s.documents.map(d => (
+                  <DocRow key={d.id} label={d.label} sub={d.deleted ? 'Deleted after handover' : d.filename} done={!d.deleted}
+                    action={d.deleted ? undefined : <Button title="Open" kind="ghost" onPress={() => openDoc(d.id).catch(e => setError(e.message))} style={{ minHeight: 40 }} />} />
+                ))}
+              </View>
+            ) : (
+              <Body small muted>No documents yet.</Body>
+            )}
+          </Card>
+        ))}
+      </Screen>
+    </>
+  );
+}
